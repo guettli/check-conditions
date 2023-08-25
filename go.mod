@@ -1,4 +1,4 @@
-module github.com/guettli/check-owner-refs
+module github.com/guettli/check-conditions
 
 go 1.20
 
