@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"golang.org/x/exp/slices"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -11,6 +12,16 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 )
+
+var resourcesToSkip = []string{
+	"bindings",
+	"tokenreviews",
+	"selfsubjectaccessreviews",
+	"selfsubjectrulesreviews",
+	"localsubjectaccessreviews",
+	"subjectaccessreviews",
+	"componentstatuses",
+}
 
 func main() {
 	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
@@ -46,6 +57,9 @@ func main() {
 			if containsSlash(resource.Name) {
 				continue
 			}
+			if slices.Contains(resourcesToSkip, resource.Name) {
+				continue
+			}
 			gvr := schema.GroupVersionResource{
 				Group:    group.GroupVersion,
 				Version:  resource.Version,
@@ -60,33 +74,22 @@ func main() {
 			// }
 			var list *unstructured.UnstructuredList
 			if resource.Namespaced {
-				namespaces, err := clientset.CoreV1().Namespaces().List(context.TODO(), metav1.ListOptions{})
+				list, err = dynClient.Resource(gvr).List(context.TODO(), metav1.ListOptions{})
+
 				if err != nil {
-					fmt.Printf("Error listing namespaces: %v\n", err)
+					fmt.Printf("..Error listing %s: %v. group %q version %q resource %q\n", resource.Name, err,
+						gvr.Group, gvr.Version, gvr.Resource)
 					continue
 				}
-				for _, ns := range namespaces.Items {
-					// if ns.Name != "default" {
-					// 	continue
-					// }
-					list, err = dynClient.Resource(gvr).Namespace(ns.Name).List(context.TODO(), metav1.ListOptions{})
-					//resourceList, err := dynClient.Resource(v1.SchemeGroupVersion.WithResource(resource.Name)).Namespace("default").List(context.TODO(), v1.ListOptions{})
-
-					if err != nil {
-						fmt.Printf("..Error listing %s in namespace %s: %v. group %q version %q resource %q\n", resource.Name, ns.Name, err,
-							gvr.Group, gvr.Version, gvr.Resource)
-						continue
-					}
-					printResources(list, resource.Name, gvr, ns.Name)
-				}
+				printResources(list, resource.Name, gvr)
 
 			} else {
 				list, err = dynClient.Resource(gvr).List(context.TODO(), metav1.ListOptions{})
 				if err != nil {
-					fmt.Printf("Error listing %s: %v\n", resource.Name, err)
+					fmt.Printf("..Error listing %s: %v\n", resource.Name, err)
 					continue
 				}
-				printResources(list, resource.Name, gvr, "")
+				printResources(list, resource.Name, gvr)
 			}
 		}
 	}
@@ -96,7 +99,6 @@ func containsSlash(s string) bool {
 	return len(s) > 0 && s[0] == '/'
 }
 
-func printResources(list *unstructured.UnstructuredList, resourceName string, gvr schema.GroupVersionResource, namespace string) {
-	fmt.Printf("Found %d resources of type %s in namespace %s. group %q version %q resource %q\n", len(list.Items), resourceName, namespace,
-		gvr.Group, gvr.Version, gvr.Resource)
+func printResources(list *unstructured.UnstructuredList, resourceName string, gvr schema.GroupVersionResource) {
+	fmt.Printf("Found %d resources of type %s. group %q version %q resource %q\n", len(list.Items), resourceName, gvr.Group, gvr.Version, gvr.Resource)
 }
