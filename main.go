@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"golang.org/x/exp/slices"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -100,5 +101,70 @@ func containsSlash(s string) bool {
 }
 
 func printResources(list *unstructured.UnstructuredList, resourceName string, gvr schema.GroupVersionResource) {
-	fmt.Printf("Found %d resources of type %s. group %q version %q resource %q\n", len(list.Items), resourceName, gvr.Group, gvr.Version, gvr.Resource)
+	//fmt.Printf("Found %d resources of type %s. group %q version %q resource %q\n", len(list.Items), resourceName, gvr.Group, gvr.Version, gvr.Resource)
+	for _, obj := range list.Items {
+		conditions, _, err := unstructured.NestedSlice(obj.Object, "status", "conditions")
+		if err != nil {
+			panic(err)
+		}
+		// Iterate over the conditions slice
+		for _, condition := range conditions {
+			// Convert each condition to a map[string]interface{}
+			conditionMap, ok := condition.(map[string]interface{})
+			if !ok {
+				fmt.Println("Invalid condition format")
+				continue
+			}
+
+			// Access the desired fields within the condition map
+			// For example, to access the "type" and "status" fields:
+			conditionType, _ := conditionMap["type"].(string)
+			conditionStatus, _ := conditionMap["status"].(string)
+			if conditionToSkip(conditionType) {
+				continue
+			}
+			if conditionTypeHasPositiveMeaning(conditionType) && conditionStatus == "True" {
+				continue
+			}
+			if conditionTypeHasNegativeMeaning(conditionType) && conditionStatus == "False" {
+				continue
+			}
+			fmt.Printf("  %s %s %s Condition %s=%s\n", obj.GetNamespace(), gvr.Resource, obj.GetName(), conditionType, conditionStatus)
+		}
+	}
+}
+
+func conditionToSkip(ct string) bool {
+	// Skip conditions which can be True or False, and both values are fine.
+	var toSkip = []string{
+		"DisruptionAllowed",
+		"LoadBalancerAttachedToNetwork",
+		"NetworkAttached",
+	}
+	return slices.Contains(toSkip, ct)
+}
+func conditionTypeHasPositiveMeaning(ct string) bool {
+	for _, suffix := range []string{
+		"Ready", "Succeeded", "Healthy", "Available", "Approved",
+		"Initialized", "PodScheduled", "Complete", "Established",
+		"NamesAccepted", "Synced", "Created", "Resized",
+		"Progressing", "RemediationAllowed",
+		"LoadBalancerAttached",
+	} {
+		if strings.HasSuffix(ct, suffix) {
+			return true
+		}
+	}
+	return false
+}
+
+func conditionTypeHasNegativeMeaning(ct string) bool {
+	for _, suffix := range []string{
+		"Unavailable", "Pressure", "Dangling",
+	} {
+		if strings.HasSuffix(ct, suffix) {
+			return true
+		}
+	}
+	return false
 }
