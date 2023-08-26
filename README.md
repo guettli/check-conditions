@@ -9,17 +9,23 @@ Please provide feedback, PRs are welcome.
 # Background and Goal
 
 I develop Kubernetes controllers in Go. I develop software since ages, 
-but Kubernetes and Go is still a bit new to me.
+but Kubernetes and Go are still a bit new to me.
 
-When controllers discover that the observed state does not match the desired state,
-they could ...
+I as a developer of a controllers want an overview. I want to see the difference between
+the desired state and the observed state.
+
+
+If a controller discover that the observed state does not match the desired state,
+it could ...
 
 ... could write logs. But logs are just dust in the wind. After the next reconciliation,
 the log message will be outdated.
 
 ... could emit events. Same here: After the next reconciliation the event could be outdated.
 
-... could write to status.conditions. But how to monitor many conditions of many resources?
+... could write to status.conditions. That's what we currently do.
+
+But how to monitor many conditions of many resources?
 
 I found no tool which monitors all conditions of all resource objects. So I wrote this tiny tool.
 
