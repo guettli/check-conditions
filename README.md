@@ -41,6 +41,20 @@ Since I found not good umbrella term for CRDs and core resource types, I use the
 
 Related: [Kubernetes API Terminology](https://kubernetes.io/docs/reference/using-api/api-concepts/#standard-api-terminology)
 
+# OK vs Warning?
+
+Which conditions should create output and which conditions are ok and can get ignored?
+
+Up to now the code contains some simple lists. 
+
+Examples:
+
+* *Ready=True will be ignored
+* *Healthy=True will be ignored
+* *Pressure=False will be ignored.
+
+
+
 # Ideas
 
 Continously watch all resources for changes, monitor all changes.
