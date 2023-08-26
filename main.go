@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"golang.org/x/exp/slices"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -22,6 +23,12 @@ var resourcesToSkip = []string{
 	"localsubjectaccessreviews",
 	"subjectaccessreviews",
 	"componentstatuses",
+}
+
+type Counter struct {
+	checkedCrds       int
+	checkedConditions int
+	startTime         time.Time
 }
 
 func main() {
@@ -52,6 +59,7 @@ func main() {
 		panic(err.Error())
 	}
 
+	counter := Counter{startTime: time.Now()}
 	for _, group := range serverResources {
 		for _, resource := range group.APIResources {
 			// Skip subresources like pod/logs, pod/status
@@ -66,10 +74,14 @@ func main() {
 				Version:  resource.Version,
 				Resource: resource.Name,
 			}
+
+			// core resource types (pods, deployments, ...) need this.
+			// I found his by trial-and-error. Is this correct?
 			if gvr.Group == "v1" {
 				gvr.Version = gvr.Group
 				gvr.Group = ""
 			}
+
 			// if resource.Name != "machines" {
 			// 	continue
 			// }
@@ -82,7 +94,7 @@ func main() {
 						gvr.Group, gvr.Version, gvr.Resource)
 					continue
 				}
-				printResources(list, resource.Name, gvr)
+				printResources(list, resource.Name, gvr, &counter)
 
 			} else {
 				list, err = dynClient.Resource(gvr).List(context.TODO(), metav1.ListOptions{})
@@ -90,19 +102,23 @@ func main() {
 					fmt.Printf("..Error listing %s: %v\n", resource.Name, err)
 					continue
 				}
-				printResources(list, resource.Name, gvr)
+				printResources(list, resource.Name, gvr, &counter)
 			}
 		}
 	}
+	fmt.Printf("Checked %d conditions of %d CRDs. Duration: %s\n",
+		counter.checkedConditions, counter.checkedCrds, time.Since(counter.startTime))
 }
 
 func containsSlash(s string) bool {
 	return len(s) > 0 && s[0] == '/'
 }
 
-func printResources(list *unstructured.UnstructuredList, resourceName string, gvr schema.GroupVersionResource) {
+func printResources(list *unstructured.UnstructuredList, resourceName string, gvr schema.GroupVersionResource,
+	counter *Counter) {
 	//fmt.Printf("Found %d resources of type %s. group %q version %q resource %q\n", len(list.Items), resourceName, gvr.Group, gvr.Version, gvr.Resource)
 	for _, obj := range list.Items {
+		counter.checkedCrds++
 		conditions, _, err := unstructured.NestedSlice(obj.Object, "status", "conditions")
 		if err != nil {
 			panic(err)
@@ -115,7 +131,7 @@ func printResources(list *unstructured.UnstructuredList, resourceName string, gv
 				fmt.Println("Invalid condition format")
 				continue
 			}
-
+			counter.checkedConditions++
 			// Access the desired fields within the condition map
 			// For example, to access the "type" and "status" fields:
 			conditionType, _ := conditionMap["type"].(string)
