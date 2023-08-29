@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/exp/slices"
@@ -42,9 +43,16 @@ var resourcesToSkip = []string{
 }
 
 type Counter struct {
-	checkedCrds       int
-	checkedConditions int
-	startTime         time.Time
+	checkedResources     int32
+	checkedConditions    int32
+	checkedResourceTypes int32
+	startTime            time.Time
+}
+
+func (c *Counter) add(o handleResourceTypeOutput) {
+	c.checkedResources += o.checkedResources
+	c.checkedConditions += o.checkedConditions
+	c.checkedResourceTypes += o.checkedResourceTypes
 }
 
 func runAll(args Arguments) {
@@ -75,66 +83,56 @@ func runAll(args Arguments) {
 		panic(err.Error())
 	}
 
+	jobs := make(chan handleResourceTypeInput)
+	results := make(chan handleResourceTypeOutput)
+	var wg sync.WaitGroup
+
+	// Create workers
+	for i := 0; i < 50; i++ {
+		wg.Add(1)
+		go func(workerID int32) {
+			defer wg.Done()
+			for input := range jobs {
+				input.workerID = workerID
+				results <- handleResourceType(input)
+			}
+		}(int32(i))
+	}
+
 	counter := Counter{startTime: time.Now()}
+
+	go func() {
+		for result := range results {
+			counter.add(result)
+		}
+	}()
+
 	for _, group := range serverResources {
 		for _, resource := range group.APIResources {
-			// Skip subresources like pod/logs, pod/status
-			if containsSlash(resource.Name) {
-				continue
-			}
-			if slices.Contains(resourcesToSkip, resource.Name) {
-				continue
-			}
-			gvr := schema.GroupVersionResource{
-				Group:    group.GroupVersion,
-				Version:  resource.Version,
-				Resource: resource.Name,
-			}
-
-			// core resource types (pods, deployments, ...) need this.
-			// I found his by trial-and-error. Is this correct?
-			if gvr.Group == "v1" {
-				gvr.Version = gvr.Group
-				gvr.Group = ""
-			}
-
-			// if resource.Name != "machines" {
-			// 	continue
-			// }
-			var list *unstructured.UnstructuredList
-			if resource.Namespaced {
-				list, err = dynClient.Resource(gvr).List(context.TODO(), metav1.ListOptions{})
-
-				if err != nil {
-					fmt.Printf("..Error listing %s: %v. group %q version %q resource %q\n", resource.Name, err,
-						gvr.Group, gvr.Version, gvr.Resource)
-					continue
-				}
-				printResources(args, list, resource.Name, gvr, &counter)
-
-			} else {
-				list, err = dynClient.Resource(gvr).List(context.TODO(), metav1.ListOptions{})
-				if err != nil {
-					fmt.Printf("..Error listing %s: %v\n", resource.Name, err)
-					continue
-				}
-				printResources(args, list, resource.Name, gvr, &counter)
+			jobs <- handleResourceTypeInput{
+				args:      &args,
+				dynClient: dynClient,
+				resource:  &resource,
+				group:     group,
 			}
 		}
 	}
-	fmt.Printf("Checked %d conditions of %d CRDs. Duration: %s\n",
-		counter.checkedConditions, counter.checkedCrds, time.Since(counter.startTime))
+	close(jobs)
+	wg.Wait()
+	close(results)
+	fmt.Printf("Checked %d conditions of %d resources of %d types. Duration: %s\n",
+		counter.checkedConditions, counter.checkedResources, counter.checkedResourceTypes, time.Since(counter.startTime))
 }
 
 func containsSlash(s string) bool {
 	return len(s) > 0 && s[0] == '/'
 }
 
-func printResources(args Arguments, list *unstructured.UnstructuredList, resourceName string, gvr schema.GroupVersionResource,
-	counter *Counter) {
+func printResources(args *Arguments, list *unstructured.UnstructuredList, resourceName string, gvr schema.GroupVersionResource,
+	counter *handleResourceTypeOutput, workerID int32) {
 	//fmt.Printf("Found %d resources of type %s. group %q version %q resource %q\n", len(list.Items), resourceName, gvr.Group, gvr.Version, gvr.Resource)
 	for _, obj := range list.Items {
-		counter.checkedCrds++
+		counter.checkedResources++
 		conditions, _, err := unstructured.NestedSlice(obj.Object, "status", "conditions")
 		if err != nil {
 			panic(err)
@@ -155,17 +153,20 @@ func printResources(args Arguments, list *unstructured.UnstructuredList, resourc
 			if conditionToSkip(conditionType) {
 				continue
 			}
-			if conditionTypeHasPositiveMeaning(conditionType) && conditionStatus == "True" {
+			if conditionTypeHasPositiveMeaning(gvr.Resource, conditionType) && conditionStatus == "True" {
 				continue
 			}
 			if conditionTypeHasNegativeMeaning(conditionType) && conditionStatus == "False" {
 				continue
 			}
-			fmt.Printf("  %s %s %s Condition %s=%s\n", obj.GetNamespace(), gvr.Resource, obj.GetName(), conditionType, conditionStatus)
+			conditionReason, _ := conditionMap["reason"].(string)
+			conditionMessage, _ := conditionMap["message"].(string)
+			fmt.Printf("  %s %s %s Condition %s=%s %s %q\n", obj.GetNamespace(), gvr.Resource, obj.GetName(), conditionType, conditionStatus,
+				conditionReason, conditionMessage)
 		}
 	}
 	if args.verbose {
-		fmt.Printf("  checked %s %s %s\n", gvr.Resource, gvr.Group, gvr.Version)
+		fmt.Printf("    checked %s %s %s workerID=%d\n", gvr.Resource, gvr.Group, gvr.Version, workerID)
 	}
 }
 
@@ -178,7 +179,17 @@ func conditionToSkip(ct string) bool {
 	}
 	return slices.Contains(toSkip, ct)
 }
-func conditionTypeHasPositiveMeaning(ct string) bool {
+
+var conditionTypesOfResourceWithPositiveMeaning = map[string][]string{
+	"hetznerbaremetalmachines": {"AssociateBMHCondition"},
+}
+
+func conditionTypeHasPositiveMeaning(resource string, ct string) bool {
+	types := conditionTypesOfResourceWithPositiveMeaning[resource]
+	if slices.Contains(types, ct) {
+		return true
+	}
+
 	for _, suffix := range []string{
 		"Ready", "Succeeded", "Healthy", "Available", "Approved",
 		"Initialized", "PodScheduled", "Complete", "Established",
@@ -202,4 +213,68 @@ func conditionTypeHasNegativeMeaning(ct string) bool {
 		}
 	}
 	return false
+}
+
+type handleResourceTypeInput struct {
+	args      *Arguments
+	dynClient *dynamic.DynamicClient
+	resource  *metav1.APIResource
+	group     *metav1.APIResourceList
+	workerID  int32
+}
+
+type handleResourceTypeOutput struct {
+	checkedResourceTypes int32
+	checkedResources     int32
+	checkedConditions    int32
+}
+
+func handleResourceType(input handleResourceTypeInput) handleResourceTypeOutput {
+	var output handleResourceTypeOutput
+
+	args := input.args
+	resource := input.resource
+	dynClient := input.dynClient
+	group := input.group
+	// Skip subresources like pod/logs, pod/status
+	if containsSlash(resource.Name) {
+		return output
+	}
+	if slices.Contains(resourcesToSkip, resource.Name) {
+		return output
+	}
+	gvr := schema.GroupVersionResource{
+		Group:    group.GroupVersion,
+		Version:  resource.Version,
+		Resource: resource.Name,
+	}
+
+	// core resource types (pods, deployments, ...) need this.
+	// I found his by trial-and-error. Is this correct?
+	if gvr.Group == "v1" {
+		gvr.Version = gvr.Group
+		gvr.Group = ""
+	}
+
+	output.checkedResourceTypes++
+
+	if resource.Namespaced {
+		list, err := dynClient.Resource(gvr).List(context.TODO(), metav1.ListOptions{})
+
+		if err != nil {
+			fmt.Printf("..Error listing %s: %v. group %q version %q resource %q\n", resource.Name, err,
+				gvr.Group, gvr.Version, gvr.Resource)
+			return output
+		}
+		printResources(args, list, resource.Name, gvr, &output, input.workerID)
+
+	} else {
+		list, err := dynClient.Resource(gvr).List(context.TODO(), metav1.ListOptions{})
+		if err != nil {
+			fmt.Printf("..Error listing %s: %v\n", resource.Name, err)
+			return output
+		}
+		printResources(args, list, resource.Name, gvr, &output, input.workerID)
+	}
+	return output
 }
