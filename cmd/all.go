@@ -64,6 +64,11 @@ func runAll(args Arguments) {
 	if err != nil {
 		panic(err.Error())
 	}
+
+	// 80 concurrent requests were served in roughly 200ms
+	// This means 400 requests in one second (to local kind cluster)
+	// But why reduce this? I don't want people with better hardware
+	// to wait for getting results from an api-server running at localhost
 	config.QPS = 1000
 	config.Burst = 1000
 
@@ -89,8 +94,12 @@ func runAll(args Arguments) {
 	results := make(chan handleResourceTypeOutput)
 	var wg sync.WaitGroup
 
+	// Concurrency needed?
+	// Without: 320ms
+	// With 10 or more workers: 190ms
+
 	// Create workers
-	for i := 0; i < 50; i++ {
+	for i := 0; i < 10; i++ {
 		wg.Add(1)
 		go func(workerID int32) {
 			defer wg.Done()
