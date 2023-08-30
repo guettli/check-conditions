@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -118,13 +119,21 @@ func runAll(args Arguments) {
 		}
 	}()
 
-	for _, group := range serverResources {
-		for _, resource := range group.APIResources {
+	for _, resourceList := range serverResources {
+		groupVersion, err := schema.ParseGroupVersion(resourceList.GroupVersion)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to parse group version: %v\n", err)
+			continue
+		}
+		for i := range resourceList.APIResources {
 			jobs <- handleResourceTypeInput{
 				args:      &args,
 				dynClient: dynClient,
-				resource:  &resource,
-				group:     group,
+				gvr: schema.GroupVersionResource{
+					Group:    groupVersion.Group,
+					Version:  groupVersion.Version,
+					Resource: resourceList.APIResources[i].Name,
+				},
 			}
 		}
 	}
@@ -229,8 +238,7 @@ func conditionTypeHasNegativeMeaning(ct string) bool {
 type handleResourceTypeInput struct {
 	args      *Arguments
 	dynClient *dynamic.DynamicClient
-	resource  *metav1.APIResource
-	group     *metav1.APIResourceList
+	gvr       schema.GroupVersionResource
 	workerID  int32
 }
 
@@ -244,48 +252,27 @@ func handleResourceType(input handleResourceTypeInput) handleResourceTypeOutput 
 	var output handleResourceTypeOutput
 
 	args := input.args
-	resource := input.resource
+	name := input.gvr.Resource
 	dynClient := input.dynClient
-	group := input.group
+	gvr := input.gvr
 	// Skip subresources like pod/logs, pod/status
-	if containsSlash(resource.Name) {
+	if containsSlash(name) {
 		return output
 	}
-	if slices.Contains(resourcesToSkip, resource.Name) {
+	if slices.Contains(resourcesToSkip, name) {
 		return output
-	}
-	gvr := schema.GroupVersionResource{
-		Group:    group.GroupVersion,
-		Version:  resource.Version,
-		Resource: resource.Name,
-	}
-
-	// core resource types (pods, deployments, ...) need this.
-	// I found his by trial-and-error. Is this correct?
-	if gvr.Group == "v1" {
-		gvr.Version = gvr.Group
-		gvr.Group = ""
 	}
 
 	output.checkedResourceTypes++
 
-	if resource.Namespaced {
-		list, err := dynClient.Resource(gvr).List(context.TODO(), metav1.ListOptions{})
+	list, err := dynClient.Resource(gvr).List(context.TODO(), metav1.ListOptions{})
 
-		if err != nil {
-			fmt.Printf("..Error listing %s: %v. group %q version %q resource %q\n", resource.Name, err,
-				gvr.Group, gvr.Version, gvr.Resource)
-			return output
-		}
-		printResources(args, list, resource.Name, gvr, &output, input.workerID)
-
-	} else {
-		list, err := dynClient.Resource(gvr).List(context.TODO(), metav1.ListOptions{})
-		if err != nil {
-			fmt.Printf("..Error listing %s: %v\n", resource.Name, err)
-			return output
-		}
-		printResources(args, list, resource.Name, gvr, &output, input.workerID)
+	if err != nil {
+		fmt.Printf("..Error listing %s: %v. group %q version %q resource %q\n", name, err,
+			gvr.Group, gvr.Version, gvr.Resource)
+		return output
 	}
+	printResources(args, list, name, gvr, &output, input.workerID)
+
 	return output
 }
