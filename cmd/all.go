@@ -201,7 +201,9 @@ func conditionToSkip(ct string) bool {
 }
 
 var conditionTypesOfResourceWithPositiveMeaning = map[string][]string{
-	"hetznerbaremetalmachines": {"AssociateBMHCondition"},
+	"hetznerbaremetalmachines": {
+		"AssociateBMHCondition",
+	},
 }
 
 func conditionTypeHasPositiveMeaning(resource string, ct string) bool {
@@ -215,7 +217,8 @@ func conditionTypeHasPositiveMeaning(resource string, ct string) bool {
 		"Initialized", "PodScheduled", "Complete", "Established",
 		"NamesAccepted", "Synced", "Created", "Resized",
 		"Progressing", "RemediationAllowed",
-		"LoadBalancerAttached",
+		"LoadBalancerAttached", "Reconciled", "Downloaded", "Built",
+		"Applied", "UpToDate",
 	} {
 		if strings.HasSuffix(ct, suffix) {
 			return true
