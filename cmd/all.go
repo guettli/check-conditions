@@ -57,6 +57,9 @@ func runAll(args Arguments) {
 		panic(err.Error())
 	}
 
+	config.QPS = 1000
+	config.Burst = 1000
+
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		panic(err.Error())
