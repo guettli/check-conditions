@@ -176,7 +176,7 @@ func printResources(args *Arguments, list *unstructured.UnstructuredList, resour
 			if conditionTypeHasPositiveMeaning(gvr.Resource, conditionType) && conditionStatus == "True" {
 				continue
 			}
-			if conditionTypeHasNegativeMeaning(conditionType) && conditionStatus == "False" {
+			if conditionTypeHasNegativeMeaning(gvr.Resource, conditionType) && conditionStatus == "False" {
 				continue
 			}
 			conditionReason, _ := conditionMap["reason"].(string)
@@ -206,6 +206,15 @@ var conditionTypesOfResourceWithPositiveMeaning = map[string][]string{
 	},
 }
 
+var conditionTypesOfResourceWithNegativeMeaning = map[string][]string{
+	"nodes": {
+		"KernelDeadlock",
+		"ReadonlyFilesystem",
+		"FrequentUnregisterNetDevice",
+		"NTPProblem",
+	},
+}
+
 func conditionTypeHasPositiveMeaning(resource string, ct string) bool {
 	types := conditionTypesOfResourceWithPositiveMeaning[resource]
 	if slices.Contains(types, ct) {
@@ -227,13 +236,20 @@ func conditionTypeHasPositiveMeaning(resource string, ct string) bool {
 	return false
 }
 
-func conditionTypeHasNegativeMeaning(ct string) bool {
+func conditionTypeHasNegativeMeaning(resource string, ct string) bool {
+	types := conditionTypesOfResourceWithNegativeMeaning[resource]
+	if slices.Contains(types, ct) {
+		return true
+	}
 	for _, suffix := range []string{
-		"Unavailable", "Pressure", "Dangling",
+		"Unavailable", "Pressure", "Dangling", "Unhealthy",
 	} {
 		if strings.HasSuffix(ct, suffix) {
 			return true
 		}
+	}
+	if strings.HasPrefix(ct, "Frequent") && strings.HasSuffix(ct, "Restart") {
+		return true
 	}
 	return false
 }
