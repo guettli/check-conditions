@@ -19,7 +19,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// allCmd represents the all command
 var allCmd = &cobra.Command{
 	Use:   "all",
 	Short: "Check all conditions of all api-resources",
@@ -99,17 +98,7 @@ func runAll(args Arguments) {
 	// Without: 320ms
 	// With 10 or more workers: 190ms
 
-	// Create workers
-	for i := 0; i < 10; i++ {
-		wg.Add(1)
-		go func(workerID int32) {
-			defer wg.Done()
-			for input := range jobs {
-				input.workerID = workerID
-				results <- handleResourceType(input)
-			}
-		}(int32(i))
-	}
+	createWorkers(&wg, jobs, results)
 
 	counter := Counter{startTime: time.Now()}
 
@@ -119,6 +108,16 @@ func runAll(args Arguments) {
 		}
 	}()
 
+	createJobs(serverResources, jobs, args, dynClient)
+
+	close(jobs)
+	wg.Wait()
+	close(results)
+	fmt.Printf("Checked %d conditions of %d resources of %d types. Duration: %s\n",
+		counter.checkedConditions, counter.checkedResources, counter.checkedResourceTypes, time.Since(counter.startTime))
+}
+
+func createJobs(serverResources []*metav1.APIResourceList, jobs chan handleResourceTypeInput, args Arguments, dynClient *dynamic.DynamicClient) {
 	for _, resourceList := range serverResources {
 		groupVersion, err := schema.ParseGroupVersion(resourceList.GroupVersion)
 		if err != nil {
@@ -137,62 +136,74 @@ func runAll(args Arguments) {
 			}
 		}
 	}
-	close(jobs)
-	wg.Wait()
-	close(results)
-	fmt.Printf("Checked %d conditions of %d resources of %d types. Duration: %s\n",
-		counter.checkedConditions, counter.checkedResources, counter.checkedResourceTypes, time.Since(counter.startTime))
+}
+
+func createWorkers(wg *sync.WaitGroup, jobs chan handleResourceTypeInput, results chan handleResourceTypeOutput) {
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func(workerID int32) {
+			defer wg.Done()
+			for input := range jobs {
+				input.workerID = workerID
+				results <- handleResourceType(input)
+			}
+		}(int32(i))
+	}
 }
 
 func containsSlash(s string) bool {
 	return len(s) > 0 && s[0] == '/'
 }
 
-func printResources(args *Arguments, list *unstructured.UnstructuredList, resourceName string, gvr schema.GroupVersionResource,
-	counter *handleResourceTypeOutput, workerID int32) {
-	//fmt.Printf("Found %d resources of type %s. group %q version %q resource %q\n", len(list.Items), resourceName, gvr.Group, gvr.Version, gvr.Resource)
+func printResources(args *Arguments, list *unstructured.UnstructuredList, gvr schema.GroupVersionResource,
+	counter *handleResourceTypeOutput, workerID int32,
+) {
 	for _, obj := range list.Items {
 		counter.checkedResources++
 		conditions, _, err := unstructured.NestedSlice(obj.Object, "status", "conditions")
 		if err != nil {
 			panic(err)
 		}
-		// Iterate over the conditions slice
-		for _, condition := range conditions {
-			// Convert each condition to a map[string]interface{}
-			conditionMap, ok := condition.(map[string]interface{})
-			if !ok {
-				fmt.Println("Invalid condition format")
-				continue
-			}
-			counter.checkedConditions++
-			// Access the desired fields within the condition map
-			// For example, to access the "type" and "status" fields:
-			conditionType, _ := conditionMap["type"].(string)
-			conditionStatus, _ := conditionMap["status"].(string)
-			if conditionToSkip(conditionType) {
-				continue
-			}
-			if conditionTypeHasPositiveMeaning(gvr.Resource, conditionType) && conditionStatus == "True" {
-				continue
-			}
-			if conditionTypeHasNegativeMeaning(gvr.Resource, conditionType) && conditionStatus == "False" {
-				continue
-			}
-			conditionReason, _ := conditionMap["reason"].(string)
-			conditionMessage, _ := conditionMap["message"].(string)
-			fmt.Printf("  %s %s %s Condition %s=%s %s %q\n", obj.GetNamespace(), gvr.Resource, obj.GetName(), conditionType, conditionStatus,
-				conditionReason, conditionMessage)
-		}
+		// Convert each condition to a map[string]interface{}
+		// Access the desired fields within the condition map
+		// For example, to access the "type" and "status" fields:
+		printConditions(conditions, counter, gvr, obj)
 	}
 	if args.verbose {
 		fmt.Printf("    checked %s %s %s workerID=%d\n", gvr.Resource, gvr.Group, gvr.Version, workerID)
 	}
 }
 
+func printConditions(conditions []interface{}, counter *handleResourceTypeOutput, gvr schema.GroupVersionResource, obj unstructured.Unstructured) {
+	for _, condition := range conditions {
+		conditionMap, ok := condition.(map[string]interface{})
+		if !ok {
+			fmt.Println("Invalid condition format")
+			continue
+		}
+		counter.checkedConditions++
+
+		conditionType, _ := conditionMap["type"].(string)
+		conditionStatus, _ := conditionMap["status"].(string)
+		if conditionToSkip(conditionType) {
+			continue
+		}
+		if conditionTypeHasPositiveMeaning(gvr.Resource, conditionType) && conditionStatus == "True" {
+			continue
+		}
+		if conditionTypeHasNegativeMeaning(gvr.Resource, conditionType) && conditionStatus == "False" {
+			continue
+		}
+		conditionReason, _ := conditionMap["reason"].(string)
+		conditionMessage, _ := conditionMap["message"].(string)
+		fmt.Printf("  %s %s %s Condition %s=%s %s %q\n", obj.GetNamespace(), gvr.Resource, obj.GetName(), conditionType, conditionStatus,
+			conditionReason, conditionMessage)
+	}
+}
+
 func conditionToSkip(ct string) bool {
 	// Skip conditions which can be True or False, and both values are fine.
-	var toSkip = []string{
+	toSkip := []string{
 		"DisruptionAllowed",
 		"LoadBalancerAttachedToNetwork",
 		"NetworkAttached",
@@ -241,6 +252,7 @@ func conditionTypeHasNegativeMeaning(resource string, ct string) bool {
 	if slices.Contains(types, ct) {
 		return true
 	}
+
 	for _, suffix := range []string{
 		"Unavailable", "Pressure", "Dangling", "Unhealthy",
 	} {
@@ -251,6 +263,7 @@ func conditionTypeHasNegativeMeaning(resource string, ct string) bool {
 	if strings.HasPrefix(ct, "Frequent") && strings.HasSuffix(ct, "Restart") {
 		return true
 	}
+
 	return false
 }
 
@@ -285,13 +298,13 @@ func handleResourceType(input handleResourceTypeInput) handleResourceTypeOutput 
 	output.checkedResourceTypes++
 
 	list, err := dynClient.Resource(gvr).List(context.TODO(), metav1.ListOptions{})
-
 	if err != nil {
 		fmt.Printf("..Error listing %s: %v. group %q version %q resource %q\n", name, err,
 			gvr.Group, gvr.Version, gvr.Resource)
 		return output
 	}
-	printResources(args, list, name, gvr, &output, input.workerID)
+
+	printResources(args, list, gvr, &output, input.workerID)
 
 	return output
 }

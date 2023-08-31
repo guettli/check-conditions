@@ -1,6 +1,6 @@
 /*
-Copyright © 2023 NAME HERE <EMAIL ADDRESS>
-
+Copyright © 2023 Thomas Güttler <info@thomas-guettler.de>
+See LICENSE file.
 */
 package main
 
