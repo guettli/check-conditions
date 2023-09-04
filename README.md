@@ -59,6 +59,8 @@ Examples:
 
 Improve filtering: Only particular namespaces, only particular ressources.
 
+Order output, so that results are stable. Maybe by kind, namespace, name.
+
 Check if deletionTimestap is too old.
 
 Continously watch all resources for changes, monitor all changes.
