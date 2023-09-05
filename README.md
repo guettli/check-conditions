@@ -63,6 +63,8 @@ Order output, so that results are stable. Maybe by kind, namespace, name.
 
 Check if deletionTimestap is too old.
 
+`grep` all values in the cluster for a string. Or JSONPath on everything.
+
 Continously watch all resources for changes, monitor all changes.
 
 Write all changes to a storage, so that the changes can get analyzed. With
