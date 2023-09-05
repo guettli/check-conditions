@@ -32,7 +32,7 @@ I found no tool which monitors all conditions of all resource objects. So I wrot
 # Executing
 
 ```
-go run github.com/guettli/check-conditions@latest
+go run github.com/guettli/check-conditions@latest all
 ```
 
 # Terminology
