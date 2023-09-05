@@ -57,7 +57,17 @@ Examples:
 
 # Ideas
 
+Improve filtering: Only particular namespaces, only particular ressources.
+
+Order output, so that results are stable. Maybe by kind, namespace, name.
+
+Check if deletionTimestap is too old.
+
 Continously watch all resources for changes, monitor all changes.
+
+Write all changes to a storage, so that the changes can get analyzed. With
+all changes I mean all changes of all resources in all namespaces.
+Not just conditions.
 
 Report broken ownerRefs.
 
