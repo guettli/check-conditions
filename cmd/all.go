@@ -244,6 +244,13 @@ func conditionTypeHasPositiveMeaning(resource string, ct string) bool {
 			return true
 		}
 	}
+	for _, prefix := range []string{
+		"Created",
+	} {
+		if strings.HasPrefix(ct, prefix) {
+			return true
+		}
+	}
 	return false
 }
 
