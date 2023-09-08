@@ -66,6 +66,8 @@ The [API convention of Kubernetes about Status and Conditions](https://github.co
 
 # Ideas
 
+List all resource of namespace "foo". `kubectl get all -n foo` does not show CRDs.
+
 Improve filtering: Only particular namespaces, only particular ressources.
 
 Order output, so that results are stable. Maybe by kind, namespace, name.
