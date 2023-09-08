@@ -238,7 +238,7 @@ func conditionTypeHasPositiveMeaning(resource string, ct string) bool {
 		"NamesAccepted", "Synced", "Created", "Resized",
 		"Progressing", "RemediationAllowed",
 		"LoadBalancerAttached", "Reconciled", "Downloaded", "Built",
-		"Applied", "UpToDate", "Installed", "Passed",
+		"Applied", "UpToDate", "Installed", "Passed", "Provisioned",
 	} {
 		if strings.HasSuffix(ct, suffix) {
 			return true
