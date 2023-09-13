@@ -64,6 +64,10 @@ Why I prefer the `status.conditions` of Cluster-API. Related proposal: [Conditio
 The [API convention of Kubernetes about Status and Conditions](https://github.com/kubernetes/community/blob/master/contributors/devel/sig-architecture/api-conventions.md#typical-status-properties) are more general. Here "True" can mean "healthy" (for example "DiskPressure").
 
 
+# TODO
+
+sort output. It is confusing if the second output has a different order than the first output.
+
 # Ideas
 
 List all resource of namespace "foo". `kubectl get all -n foo` does not show CRDs.
