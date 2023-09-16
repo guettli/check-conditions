@@ -68,6 +68,9 @@ The [API convention of Kubernetes about Status and Conditions](https://github.co
 
 sort output. It is confusing if the second output has a different order than the first output.
 
+check schema of resource before fetching all objects: skip resources which don't have status.conditions.
+
+
 # Ideas
 
 List all resource of namespace "foo". `kubectl get all -n foo` does not show CRDs.
