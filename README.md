@@ -70,6 +70,7 @@ sort output. It is confusing if the second output has a different order than the
 
 check schema of resource before fetching all objects: skip resources which don't have status.conditions.
 
+filter by namespace and labels. Maybe interactively. But is there a way to get all labels of the cluster (without reading all resources)?
 
 # Ideas
 
