@@ -195,6 +195,9 @@ func printConditions(conditions []interface{}, counter *handleResourceTypeOutput
 			continue
 		}
 		conditionReason, _ := conditionMap["reason"].(string)
+		if conditionDone(gvr.Resource, conditionType, conditionStatus, conditionReason) {
+			continue
+		}
 		conditionMessage, _ := conditionMap["message"].(string)
 		fmt.Printf("  %s %s %s Condition %s=%s %s %q\n", obj.GetNamespace(), gvr.Resource, obj.GetName(), conditionType, conditionStatus,
 			conditionReason, conditionMessage)
@@ -250,6 +253,15 @@ func conditionTypeHasPositiveMeaning(resource string, ct string) bool {
 		if strings.HasPrefix(ct, prefix) {
 			return true
 		}
+	}
+	return false
+}
+
+func conditionDone(resource string, conditionType string, conditionStatus string, conditionReason string) bool {
+	if (conditionType == "Ready" || conditionType == "ContainerReady") &&
+		conditionReason == "PodCompleted" &&
+		conditionStatus == "False" {
+		return true
 	}
 	return false
 }
