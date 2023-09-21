@@ -258,7 +258,7 @@ func conditionTypeHasPositiveMeaning(resource string, ct string) bool {
 }
 
 func conditionDone(resource string, conditionType string, conditionStatus string, conditionReason string) bool {
-	if (conditionType == "Ready" || conditionType == "ContainerReady") &&
+	if (conditionType == "Ready" || conditionType == "ContainersReady") &&
 		conditionReason == "PodCompleted" &&
 		conditionStatus == "False" {
 		return true
