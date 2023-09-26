@@ -160,7 +160,14 @@ func printResources(args *Arguments, list *unstructured.UnstructuredList, gvr sc
 ) {
 	for _, obj := range list.Items {
 		counter.checkedResources++
-		conditions, _, err := unstructured.NestedSlice(obj.Object, "status", "conditions")
+		var conditions []interface{}
+		var err error
+		if gvr.Resource == "hetznerbaremetalhosts" {
+			// For some reasons this resource stores the conditions differnetly
+			conditions, _, err = unstructured.NestedSlice(obj.Object, "spec", "status", "conditions")
+		} else {
+			conditions, _, err = unstructured.NestedSlice(obj.Object, "status", "conditions")
+		}
 		if err != nil {
 			panic(err)
 		}
