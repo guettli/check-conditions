@@ -243,12 +243,31 @@ func conditionTypeHasPositiveMeaning(resource string, ct string) bool {
 	}
 
 	for _, suffix := range []string{
-		"Ready", "Succeeded", "Healthy", "Available", "Approved",
-		"Initialized", "PodScheduled", "Complete", "Established",
-		"NamesAccepted", "Synced", "Created", "Resized",
-		"Progressing", "RemediationAllowed",
-		"LoadBalancerAttached", "Reconciled", "Downloaded", "Built",
-		"Applied", "UpToDate", "Installed", "Passed", "Provisioned",
+		"Applied",
+		"Approved",
+		"Available",
+		"Built",
+		"Complete",
+		"Created",
+		"Downloaded",
+		"Established",
+		"Healthy",
+		"Initialized",
+		"Installed",
+		"LoadBalancerAttached",
+		"NamesAccepted",
+		"Passed",
+		"PodScheduled",
+		"Progressing",
+		"Provisioned",
+		"Reachable",
+		"Ready",
+		"Reconciled",
+		"RemediationAllowed",
+		"Resized",
+		"Succeeded",
+		"Synced",
+		"UpToDate",
 	} {
 		if strings.HasSuffix(ct, suffix) {
 			return true
