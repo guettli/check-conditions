@@ -284,8 +284,8 @@ func conditionTypeHasPositiveMeaning(resource string, ct string) bool {
 }
 
 func conditionDone(resource string, conditionType string, conditionStatus string, conditionReason string) bool {
-	if (conditionType == "Ready" || conditionType == "ContainersReady") &&
-		conditionReason == "PodCompleted" &&
+	if slices.Contains([]string{"Ready", "ContainersReady", "InfrastructureReady"}, conditionType) &&
+		slices.Contains([]string{"PodCompleted", "InstanceTerminated"}, conditionReason) &&
 		conditionStatus == "False" {
 		return true
 	}
