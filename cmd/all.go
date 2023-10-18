@@ -182,6 +182,13 @@ func printResources(args *Arguments, list *unstructured.UnstructuredList, gvr sc
 }
 
 func printConditions(conditions []interface{}, counter *handleResourceTypeOutput, gvr schema.GroupVersionResource, obj unstructured.Unstructured) {
+	type row struct {
+		conditionType    string
+		conditionStatus  string
+		conditionReason  string
+		conditionMessage string
+	}
+	var rows []row
 	for _, condition := range conditions {
 		conditionMap, ok := condition.(map[string]interface{})
 		if !ok {
@@ -206,8 +213,38 @@ func printConditions(conditions []interface{}, counter *handleResourceTypeOutput
 			continue
 		}
 		conditionMessage, _ := conditionMap["message"].(string)
-		fmt.Printf("  %s %s %s Condition %s=%s %s %q\n", obj.GetNamespace(), gvr.Resource, obj.GetName(), conditionType, conditionStatus,
-			conditionReason, conditionMessage)
+		rows = append(rows, row{conditionType, conditionStatus,
+			conditionReason, conditionMessage})
+	}
+	// remove general ready condition, if it is already contained in a particular condition
+	// https://pkg.go.dev/sigs.k8s.io/cluster-api/util/conditions#SetSummary
+	var ready *row
+	for i := range rows {
+		if rows[i].conditionType == "Ready" {
+			ready = &rows[i]
+			break
+		}
+	}
+	skipReadyCondition := false
+	if ready != nil {
+		for _, r := range rows {
+			if r.conditionType == "Ready" {
+				continue
+			}
+			if r.conditionMessage == ready.conditionMessage &&
+				r.conditionReason == ready.conditionReason &&
+				r.conditionStatus == ready.conditionStatus {
+				skipReadyCondition = true
+				break
+			}
+		}
+	}
+	for _, r := range rows {
+		if skipReadyCondition && r.conditionType == "Ready" {
+			continue
+		}
+		fmt.Printf("  %s %s %s Condition %s=%s %s %q\n", obj.GetNamespace(), gvr.Resource, obj.GetName(), r.conditionType, r.conditionStatus,
+			r.conditionReason, r.conditionMessage)
 	}
 }
 
