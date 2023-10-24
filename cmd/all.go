@@ -8,15 +8,16 @@ import (
 	"sync"
 	"time"
 
+	"github.com/caarlos0/log"
+	"github.com/spf13/cobra"
 	"golang.org/x/exp/slices"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
-
-	"github.com/spf13/cobra"
 )
 
 var allCmd = &cobra.Command{
@@ -87,7 +88,12 @@ func runAll(args Arguments) {
 	// Get the list of all API resources available
 	serverResources, err := discoveryClient.ServerPreferredResources()
 	if err != nil {
-		panic(err.Error())
+		if discovery.IsGroupDiscoveryFailedError(err) {
+			log.Info("WARNING: The Kubernetes server has an orphaned API service. Server reports: %s", err)
+			log.Info("WARNING: To fix this, kubectl delete apiservice <service-name>")
+		} else {
+			panic(err)
+		}
 	}
 
 	jobs := make(chan handleResourceTypeInput)
