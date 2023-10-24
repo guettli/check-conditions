@@ -8,7 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/caarlos0/log"
 	"github.com/spf13/cobra"
 	"golang.org/x/exp/slices"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -89,8 +88,8 @@ func runAll(args Arguments) {
 	serverResources, err := discoveryClient.ServerPreferredResources()
 	if err != nil {
 		if discovery.IsGroupDiscoveryFailedError(err) {
-			log.Info(fmt.Sprintf("WARNING: The Kubernetes server has an orphaned API service. Server reports: %s", err))
-			log.Info("WARNING: To fix this, kubectl delete apiservice <service-name>")
+			fmt.Printf("WARNING: The Kubernetes server has an orphaned API service. Server reports: %s\n", err.Error())
+			fmt.Printf("WARNING: To fix this, kubectl delete apiservice <service-name>\n")
 		} else {
 			panic(err)
 		}
