@@ -89,7 +89,7 @@ func runAll(args Arguments) {
 	serverResources, err := discoveryClient.ServerPreferredResources()
 	if err != nil {
 		if discovery.IsGroupDiscoveryFailedError(err) {
-			log.Info("WARNING: The Kubernetes server has an orphaned API service. Server reports: %s", err)
+			log.Info(fmt.Sprintf("WARNING: The Kubernetes server has an orphaned API service. Server reports: %s", err))
 			log.Info("WARNING: To fix this, kubectl delete apiservice <service-name>")
 		} else {
 			panic(err)
