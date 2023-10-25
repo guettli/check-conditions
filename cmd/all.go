@@ -188,10 +188,11 @@ func printResources(args *Arguments, list *unstructured.UnstructuredList, gvr sc
 
 func printConditions(conditions []interface{}, counter *handleResourceTypeOutput, gvr schema.GroupVersionResource, obj unstructured.Unstructured) {
 	type row struct {
-		conditionType    string
-		conditionStatus  string
-		conditionReason  string
-		conditionMessage string
+		conditionType               string
+		conditionStatus             string
+		conditionReason             string
+		conditionMessage            string
+		conditionLastTransitionTime time.Time
 	}
 	var rows []row
 	for _, condition := range conditions {
@@ -217,9 +218,14 @@ func printConditions(conditions []interface{}, counter *handleResourceTypeOutput
 		if conditionDone(gvr.Resource, conditionType, conditionStatus, conditionReason) {
 			continue
 		}
+		s, _ := conditionMap["lastTransitionTime"].(string)
+		conditionLastTransitionTime := time.Time{}
+		if s != "" {
+			conditionLastTransitionTime, _ = time.Parse(time.RFC3339, s)
+		}
 		conditionMessage, _ := conditionMap["message"].(string)
 		rows = append(rows, row{conditionType, conditionStatus,
-			conditionReason, conditionMessage})
+			conditionReason, conditionMessage, conditionLastTransitionTime})
 	}
 	// remove general ready condition, if it is already contained in a particular condition
 	// https://pkg.go.dev/sigs.k8s.io/cluster-api/util/conditions#SetSummary
@@ -248,8 +254,13 @@ func printConditions(conditions []interface{}, counter *handleResourceTypeOutput
 		if skipReadyCondition && r.conditionType == "Ready" {
 			continue
 		}
-		fmt.Printf("  %s %s %s Condition %s=%s %s %q\n", obj.GetNamespace(), gvr.Resource, obj.GetName(), r.conditionType, r.conditionStatus,
-			r.conditionReason, r.conditionMessage)
+		duration := ""
+		if !r.conditionLastTransitionTime.IsZero() {
+			d := time.Since(r.conditionLastTransitionTime)
+			duration = fmt.Sprint(d.Round(time.Second))
+		}
+		fmt.Printf("  %s %s %s Condition %s=%s %s %q (%s)\n", obj.GetNamespace(), gvr.Resource, obj.GetName(), r.conditionType, r.conditionStatus,
+			r.conditionReason, r.conditionMessage, duration)
 	}
 }
 
