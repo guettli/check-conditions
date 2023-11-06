@@ -10,6 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"golang.org/x/exp/slices"
+	"golang.org/x/term"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -62,7 +63,8 @@ func runAll(args Arguments) {
 
 	config, err := kubeconfig.ClientConfig()
 	if err != nil {
-		panic(err.Error())
+		fmt.Println(err.Error())
+		os.Exit(1)
 	}
 
 	// 80 concurrent requests were served in roughly 200ms
@@ -119,7 +121,7 @@ func runAll(args Arguments) {
 	wg.Wait()
 	close(results)
 	fmt.Printf("Checked %d conditions of %d resources of %d types. Duration: %s\n",
-		counter.checkedConditions, counter.checkedResources, counter.checkedResourceTypes, time.Since(counter.startTime))
+		counter.checkedConditions, counter.checkedResources, counter.checkedResourceTypes, time.Since(counter.startTime).Round(time.Millisecond))
 }
 
 func createJobs(serverResources []*metav1.APIResourceList, jobs chan handleResourceTypeInput, args Arguments, dynClient *dynamic.DynamicClient) {
@@ -179,21 +181,25 @@ func printResources(args *Arguments, list *unstructured.UnstructuredList, gvr sc
 		// Convert each condition to a map[string]interface{}
 		// Access the desired fields within the condition map
 		// For example, to access the "type" and "status" fields:
-		printConditions(conditions, counter, gvr, obj)
+		printConditions(args, conditions, counter, gvr, obj)
 	}
 	if args.verbose {
 		fmt.Printf("    checked %s %s %s workerID=%d\n", gvr.Resource, gvr.Group, gvr.Version, workerID)
 	}
 }
 
-func printConditions(conditions []interface{}, counter *handleResourceTypeOutput, gvr schema.GroupVersionResource, obj unstructured.Unstructured) {
-	type row struct {
-		conditionType               string
-		conditionStatus             string
-		conditionReason             string
-		conditionMessage            string
-		conditionLastTransitionTime time.Time
-	}
+type row struct {
+	namespace                   string
+	resourceType                string
+	resourceName                string
+	conditionType               string
+	conditionStatus             string
+	conditionReason             string
+	conditionMessage            string
+	conditionLastTransitionTime time.Time
+}
+
+func printConditions(args *Arguments, conditions []interface{}, counter *handleResourceTypeOutput, gvr schema.GroupVersionResource, obj unstructured.Unstructured) {
 	var rows []row
 	for _, condition := range conditions {
 		conditionMap, ok := condition.(map[string]interface{})
@@ -224,7 +230,9 @@ func printConditions(conditions []interface{}, counter *handleResourceTypeOutput
 			conditionLastTransitionTime, _ = time.Parse(time.RFC3339, s)
 		}
 		conditionMessage, _ := conditionMap["message"].(string)
-		rows = append(rows, row{conditionType, conditionStatus,
+		rows = append(rows, row{
+			obj.GetNamespace(), gvr.Resource, obj.GetName(),
+			conditionType, conditionStatus,
 			conditionReason, conditionMessage, conditionLastTransitionTime})
 	}
 	// remove general ready condition, if it is already contained in a particular condition
@@ -261,7 +269,32 @@ func printConditions(conditions []interface{}, counter *handleResourceTypeOutput
 		}
 		fmt.Printf("  %s %s %s Condition %s=%s %s %q (%s)\n", obj.GetNamespace(), gvr.Resource, obj.GetName(), r.conditionType, r.conditionStatus,
 			r.conditionReason, r.conditionMessage, duration)
+		if args.interactive {
+			fmt.Printf("...............\n")
+			s, _ := readSingleChar()
+			fmt.Printf("nice: %s\n", s)
+
+		}
 	}
+}
+
+func readSingleChar() (string, error) {
+	// switch stdin into 'raw' mode
+	stdin := int(os.Stdin.Fd())
+	oldState, err := term.MakeRaw(stdin)
+	if err != nil {
+		fmt.Println(err)
+		return "", err
+	}
+	defer term.Restore(stdin, oldState)
+
+	b := make([]byte, 1)
+	_, err = os.Stdin.Read(b)
+	if err != nil {
+		fmt.Println(err)
+		return "", err
+	}
+	return string(b), nil
 }
 
 func conditionToSkip(ct string) bool {
