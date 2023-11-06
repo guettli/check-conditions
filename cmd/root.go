@@ -21,7 +21,8 @@ func Execute() {
 }
 
 type Arguments struct {
-	verbose bool
+	verbose     bool
+	interactive bool
 }
 
 var arguments Arguments
@@ -32,4 +33,6 @@ func init() {
 	// will be global for your application.
 
 	rootCmd.PersistentFlags().BoolVarP(&arguments.verbose, "verbose", "v", false, "Create more output")
+	allCmd.PersistentFlags().BoolVarP(&arguments.interactive, "interactive", "i", false, "Run in interactive mode, to add new ignore rules")
+
 }
