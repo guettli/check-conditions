@@ -62,7 +62,8 @@ func runAll(args Arguments) {
 
 	config, err := kubeconfig.ClientConfig()
 	if err != nil {
-		panic(err.Error())
+		fmt.Println(err.Error())
+		os.Exit(1)
 	}
 
 	// 80 concurrent requests were served in roughly 200ms
@@ -119,7 +120,7 @@ func runAll(args Arguments) {
 	wg.Wait()
 	close(results)
 	fmt.Printf("Checked %d conditions of %d resources of %d types. Duration: %s\n",
-		counter.checkedConditions, counter.checkedResources, counter.checkedResourceTypes, time.Since(counter.startTime))
+		counter.checkedConditions, counter.checkedResources, counter.checkedResourceTypes, time.Since(counter.startTime).Round(time.Millisecond))
 }
 
 func createJobs(serverResources []*metav1.APIResourceList, jobs chan handleResourceTypeInput, args Arguments, dynClient *dynamic.DynamicClient) {
