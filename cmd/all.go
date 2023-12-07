@@ -35,6 +35,7 @@ func init() {
 var resourcesToSkip = []string{
 	"bindings",
 	"tokenreviews",
+	"selfsubjectreviews",
 	"selfsubjectaccessreviews",
 	"selfsubjectrulesreviews",
 	"localsubjectaccessreviews",
