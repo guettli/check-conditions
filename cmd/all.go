@@ -286,6 +286,9 @@ var conditionTypesOfResourceWithPositiveMeaning = map[string][]string{
 		"AbleToScale",
 		"ScalingActive",
 	},
+	"hetznerbaremetalhosts": {
+		"RootDeviceHintsValidated",
+	},
 }
 
 var conditionTypesOfResourceWithNegativeMeaning = map[string][]string{
