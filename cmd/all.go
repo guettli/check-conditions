@@ -226,8 +226,10 @@ func printConditions(conditions []interface{}, counter *handleResourceTypeOutput
 			conditionLastTransitionTime, _ = time.Parse(time.RFC3339, s)
 		}
 		conditionMessage, _ := conditionMap["message"].(string)
-		rows = append(rows, row{conditionType, conditionStatus,
-			conditionReason, conditionMessage, conditionLastTransitionTime})
+		rows = append(rows, row{
+			conditionType, conditionStatus,
+			conditionReason, conditionMessage, conditionLastTransitionTime,
+		})
 	}
 	// remove general ready condition, if it is already contained in a particular condition
 	// https://pkg.go.dev/sigs.k8s.io/cluster-api/util/conditions#SetSummary
@@ -280,6 +282,10 @@ var conditionTypesOfResourceWithPositiveMeaning = map[string][]string{
 	"hetznerbaremetalmachines": {
 		"AssociateBMHCondition",
 	},
+	"horizontalpodautoscalers": {
+		"AbleToScale",
+		"ScalingActive",
+	},
 }
 
 var conditionTypesOfResourceWithNegativeMeaning = map[string][]string{
@@ -288,6 +294,9 @@ var conditionTypesOfResourceWithNegativeMeaning = map[string][]string{
 		"ReadonlyFilesystem",
 		"FrequentUnregisterNetDevice",
 		"NTPProblem",
+	},
+	"horizontalpodautoscalers": {
+		"ScalingLimited",
 	},
 }
 
