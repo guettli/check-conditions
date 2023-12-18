@@ -210,11 +210,15 @@ func printConditions(conditions []interface{}, counter *handleResourceTypeOutput
 		if conditionToSkip(conditionType) {
 			continue
 		}
-		if conditionTypeHasPositiveMeaning(gvr.Resource, conditionType) && conditionStatus == "True" {
-			continue
-		}
-		if conditionTypeHasNegativeMeaning(gvr.Resource, conditionType) && conditionStatus == "False" {
-			continue
+		switch conditionStatus {
+		case "True":
+			if conditionTypeHasPositiveMeaning(gvr.Resource, conditionType) {
+				continue
+			}
+		case "False":
+			if conditionTypeHasNegativeMeaning(gvr.Resource, conditionType) {
+				continue
+			}
 		}
 		conditionReason, _ := conditionMap["reason"].(string)
 		if conditionDone(gvr.Resource, conditionType, conditionStatus, conditionReason) {
@@ -351,8 +355,8 @@ func conditionTypeHasPositiveMeaning(resource string, ct string) bool {
 }
 
 func conditionDone(resource string, conditionType string, conditionStatus string, conditionReason string) bool {
-	if slices.Contains([]string{"Ready", "ContainersReady", "InfrastructureReady"}, conditionType) &&
-		slices.Contains([]string{"PodCompleted", "InstanceTerminated"}, conditionReason) &&
+	if slices.Contains([]string{"Ready", "ContainersReady", "InfrastructureReady", "MachinesReady"}, conditionType) &&
+		slices.Contains([]string{"PodCompleted", "InstanceTerminated", "Deleted"}, conditionReason) &&
 		conditionStatus == "False" {
 		return true
 	}
