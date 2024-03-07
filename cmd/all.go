@@ -16,6 +16,7 @@ import (
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
+	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 )
 
@@ -73,7 +74,14 @@ func runAll(args Arguments) {
 	// to wait for getting results from an api-server running at localhost
 	config.QPS = 1000
 	config.Burst = 1000
+	err = RunCheckAllConditions(config, args)
+	if err != nil {
+		fmt.Println(err.Error())
+		os.Exit(1)
+	}
+}
 
+func RunCheckAllConditions(config *restclient.Config, args Arguments) error {
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		panic(err.Error())
@@ -122,6 +130,7 @@ func runAll(args Arguments) {
 	close(results)
 	fmt.Printf("Checked %d conditions of %d resources of %d types. Duration: %s\n",
 		counter.checkedConditions, counter.checkedResources, counter.checkedResourceTypes, time.Since(counter.startTime).Round(time.Millisecond))
+	return nil
 }
 
 func createJobs(serverResources []*metav1.APIResourceList, jobs chan handleResourceTypeInput, args Arguments, dynClient *dynamic.DynamicClient) {
@@ -170,7 +179,7 @@ func printResources(args *Arguments, list *unstructured.UnstructuredList, gvr sc
 		var conditions []interface{}
 		var err error
 		if gvr.Resource == "hetznerbaremetalhosts" {
-			// For some reasons this resource stores the conditions differnetly
+			// For some reasons this resource stores the conditions differently
 			conditions, _, err = unstructured.NestedSlice(obj.Object, "spec", "status", "conditions")
 		} else {
 			conditions, _, err = unstructured.NestedSlice(obj.Object, "status", "conditions")
@@ -178,9 +187,6 @@ func printResources(args *Arguments, list *unstructured.UnstructuredList, gvr sc
 		if err != nil {
 			panic(err)
 		}
-		// Convert each condition to a map[string]interface{}
-		// Access the desired fields within the condition map
-		// For example, to access the "type" and "status" fields:
 		printConditions(conditions, counter, gvr, obj)
 	}
 	if args.verbose {

@@ -9,7 +9,12 @@ import (
 var rootCmd = &cobra.Command{
 	Use:   "check-conditions",
 	Short: "Check your cluster by looking at status.conditions of the resources",
-	Long:  `...`,
+	Long: `Check your cluster by looking at status.conditions of the resources
+
+Output is usualy:
+
+  namespace resource resource-name condition-type=condition-status condition-reason condition-message duration
+`,
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.
