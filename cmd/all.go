@@ -289,6 +289,12 @@ func conditionToSkip(ct string) bool {
 }
 
 var conditionTypesOfResourceWithPositiveMeaning = map[string][]string{
+	"cso-hook-server-extensionconfig": {
+		"Discovered",
+	},
+	"hetznerclusters": {
+		"ControlPlaneEndpointSet",
+	},
 	"hetznerbaremetalmachines": {
 		"AssociateBMHCondition",
 	},
