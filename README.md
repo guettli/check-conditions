@@ -2,7 +2,7 @@
 
 Tiny tool to check all conditions of all resources in your Kubernetes cluster.
 
-Takes roughly 15 seconds, even in small cluster.
+Takes only few milliseconds for small clusters running on localhost. Might take longer for large clusters.
 
 Please provide feedback, PRs are welcome.
 
@@ -52,6 +52,22 @@ Examples:
 * *Ready=True will be ignored
 * *Healthy=True will be ignored
 * *Pressure=False will be ignored.
+
+# Using via shell
+
+Imagine you want to get a signal if a condition is gone. For example you want to hear music if the condition "StillProvisioning" is gone.
+
+```
+while go run github.com/guettli/check-conditions@latest all | tee >(grep  StillProvisioning >/dev/null); do date; sleep 15; done; music
+```
+
+The `tee` looks complicated, but has the benefit, that you see the changes of the unknown conditions every 15 seconds (not only the lines you greped for).
+
+The script `music` needs to be provided by you.
+
+# From output to `kubectl describe`
+
+You just need to copy the first three columns of the output and paste it to `kubectl describe -n ` and then you can have a look at the correspondig resource.
 
 # Conditions: Cluster-API vs Kubernetes
 
