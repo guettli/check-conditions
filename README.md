@@ -58,7 +58,7 @@ Examples:
 Imagine you want to get a signal if a condition is gone. For example you want to hear music if the condition "StillProvisioning" is gone.
 
 ```
-while go run github.com/guettli/check-conditions@latest all | tee >(grep  StillProvisioning >/dev/null); do date; sleep 15; done; music
+while go run github.com/guettli/check-conditions@latest all | tee >(grep  StillProvisioning >/dev/null); do sleep 15; date; done; music
 ```
 
 The `tee` looks complicated, but has the benefit, that you see the changes of the unknown conditions every 15 seconds (not only the lines you greped for).
