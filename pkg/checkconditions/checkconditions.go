@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -20,7 +21,10 @@ import (
 )
 
 type Arguments struct {
-	Verbose bool
+	Verbose      bool
+	WhileRegex   *regexp.Regexp
+	WhileForever bool
+	StartTime    time.Time
 }
 
 var resourcesToSkip = []string{
@@ -39,15 +43,30 @@ type Counter struct {
 	checkedConditions    int32
 	checkedResourceTypes int32
 	startTime            time.Time
+	checkAgain           bool
 }
 
 func (c *Counter) add(o handleResourceTypeOutput) {
 	c.checkedResources += o.checkedResources
 	c.checkedConditions += o.checkedConditions
 	c.checkedResourceTypes += o.checkedResourceTypes
+	if o.checkAgain {
+		c.checkAgain = true
+	}
 }
 
 func RunAll(args Arguments) {
+	args.StartTime = time.Now()
+	for {
+		if RunAllOnce(args) {
+			continue
+		}
+		break
+	}
+}
+
+// RunAllOnce returns true if command should run again.
+func RunAllOnce(args Arguments) bool {
 	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
 	configOverrides := &clientcmd.ConfigOverrides{}
 	kubeconfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, configOverrides)
@@ -64,14 +83,35 @@ func RunAll(args Arguments) {
 	// to wait for getting results from an api-server running at localhost
 	config.QPS = 1000
 	config.Burst = 1000
-	err = RunCheckAllConditions(config, args)
+	checkAgain, err := RunCheckAllConditions(config, args)
 	if err != nil {
 		fmt.Println(err.Error())
 		os.Exit(1)
 	}
+	if !(args.WhileForever || checkAgain) {
+		if args.WhileRegex != nil {
+			fmt.Printf("Regex %q did not match. Stopping\n", args.WhileRegex.String())
+		}
+		duration := time.Since(args.StartTime)
+		if duration > time.Duration(5*time.Second) { //nolint:gomnd
+			fmt.Printf("Stopping after %s\n", duration.String())
+		}
+		return false
+	}
+	sleepSeconds := 15
+	pre := "Running forever. "
+	if args.WhileRegex != nil {
+		pre = fmt.Sprintf("Regex %q did match. ", args.WhileRegex.String())
+	}
+	fmt.Printf("%sWaiting %d seconds, then checking again. %s.\n",
+		pre,
+		sleepSeconds,
+		time.Now().Format("2006-01-02 15:04:05 -0700 MST"))
+	time.Sleep(time.Duration(sleepSeconds * int(time.Second)))
+	return true
 }
 
-func RunCheckAllConditions(config *restclient.Config, args Arguments) error {
+func RunCheckAllConditions(config *restclient.Config, args Arguments) (bool, error) {
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		panic(err.Error())
@@ -120,7 +160,7 @@ func RunCheckAllConditions(config *restclient.Config, args Arguments) error {
 	close(results)
 	fmt.Printf("Checked %d conditions of %d resources of %d types. Duration: %s\n",
 		counter.checkedConditions, counter.checkedResources, counter.checkedResourceTypes, time.Since(counter.startTime).Round(time.Millisecond))
-	return nil
+	return counter.checkAgain, nil
 }
 
 func createJobs(serverResources []*metav1.APIResourceList, jobs chan handleResourceTypeInput, args Arguments, dynClient *dynamic.DynamicClient) {
@@ -161,9 +201,11 @@ func containsSlash(s string) bool {
 	return len(s) > 0 && s[0] == '/'
 }
 
+// printResources returns true if the conditions should get checked again N seconds later.
 func printResources(args *Arguments, list *unstructured.UnstructuredList, gvr schema.GroupVersionResource,
 	counter *handleResourceTypeOutput, workerID int32,
-) {
+) bool {
+	again := false
 	for _, obj := range list.Items {
 		counter.checkedResources++
 		var conditions []interface{}
@@ -177,65 +219,39 @@ func printResources(args *Arguments, list *unstructured.UnstructuredList, gvr sc
 		if err != nil {
 			panic(err)
 		}
-		printConditions(conditions, counter, gvr, obj)
+		if printConditions(args, conditions, counter, gvr, obj) {
+			again = true
+		}
 	}
 	if args.Verbose {
 		fmt.Printf("    checked %s %s %s workerID=%d\n", gvr.Resource, gvr.Group, gvr.Version, workerID)
 	}
+	return again
 }
 
-func printConditions(conditions []interface{}, counter *handleResourceTypeOutput, gvr schema.GroupVersionResource, obj unstructured.Unstructured) {
-	type row struct {
-		conditionType               string
-		conditionStatus             string
-		conditionReason             string
-		conditionMessage            string
-		conditionLastTransitionTime time.Time
-	}
-	var rows []row
-	for _, condition := range conditions {
-		conditionMap, ok := condition.(map[string]interface{})
-		if !ok {
-			fmt.Println("Invalid condition format")
-			continue
-		}
-		counter.checkedConditions++
+type conditionRow struct {
+	conditionType               string
+	conditionStatus             string
+	conditionReason             string
+	conditionMessage            string
+	conditionLastTransitionTime time.Time
+}
 
-		conditionType, _ := conditionMap["type"].(string)
-		conditionStatus, _ := conditionMap["status"].(string)
-		if conditionToSkip(conditionType) {
-			continue
-		}
-		switch conditionStatus {
-		case "True":
-			if conditionTypeHasPositiveMeaning(gvr.Resource, conditionType) {
-				continue
-			}
-		case "False":
-			if conditionTypeHasNegativeMeaning(gvr.Resource, conditionType) {
-				continue
-			}
-		}
-		conditionReason, _ := conditionMap["reason"].(string)
-		if conditionDone(gvr.Resource, conditionType, conditionStatus, conditionReason) {
-			continue
-		}
-		s, _ := conditionMap["lastTransitionTime"].(string)
-		conditionLastTransitionTime := time.Time{}
-		if s != "" {
-			conditionLastTransitionTime, _ = time.Parse(time.RFC3339, s)
-		}
-		conditionMessage, _ := conditionMap["message"].(string)
-		rows = append(rows, row{
-			conditionType, conditionStatus,
-			conditionReason, conditionMessage, conditionLastTransitionTime,
-		})
+var readyString = "Ready"
+
+// printConditions returns true if the conditions should be checked again N seconds later.
+func printConditions(args *Arguments, conditions []interface{}, counter *handleResourceTypeOutput,
+	gvr schema.GroupVersionResource, obj unstructured.Unstructured,
+) bool {
+	var rows []conditionRow
+	for _, condition := range conditions {
+		rows = handleCondition(condition, counter, gvr, rows)
 	}
 	// remove general ready condition, if it is already contained in a particular condition
 	// https://pkg.go.dev/sigs.k8s.io/cluster-api/util/conditions#SetSummary
-	var ready *row
+	var ready *conditionRow
 	for i := range rows {
-		if rows[i].conditionType == "Ready" {
+		if rows[i].conditionType == readyString {
 			ready = &rows[i]
 			break
 		}
@@ -243,7 +259,7 @@ func printConditions(conditions []interface{}, counter *handleResourceTypeOutput
 	skipReadyCondition := false
 	if ready != nil {
 		for _, r := range rows {
-			if r.conditionType == "Ready" {
+			if r.conditionType == readyString {
 				continue
 			}
 			if r.conditionMessage == ready.conditionMessage &&
@@ -254,8 +270,9 @@ func printConditions(conditions []interface{}, counter *handleResourceTypeOutput
 			}
 		}
 	}
+	again := false
 	for _, r := range rows {
-		if skipReadyCondition && r.conditionType == "Ready" {
+		if skipReadyCondition && r.conditionType == readyString {
 			continue
 		}
 		duration := ""
@@ -263,9 +280,56 @@ func printConditions(conditions []interface{}, counter *handleResourceTypeOutput
 			d := time.Since(r.conditionLastTransitionTime)
 			duration = fmt.Sprint(d.Round(time.Second))
 		}
-		fmt.Printf("  %s %s %s Condition %s=%s %s %q (%s)\n", obj.GetNamespace(), gvr.Resource, obj.GetName(), r.conditionType, r.conditionStatus,
+		outLine := fmt.Sprintf("  %s %s %s Condition %s=%s %s %q (%s)", obj.GetNamespace(), gvr.Resource, obj.GetName(), r.conditionType, r.conditionStatus,
 			r.conditionReason, r.conditionMessage, duration)
+		fmt.Println(outLine)
+		if args.WhileRegex != nil {
+			if args.WhileRegex.MatchString(outLine) {
+				again = true
+			}
+		}
 	}
+	return again
+}
+
+func handleCondition(condition interface{}, counter *handleResourceTypeOutput, gvr schema.GroupVersionResource, rows []conditionRow) []conditionRow {
+	conditionMap, ok := condition.(map[string]interface{})
+	if !ok {
+		fmt.Println("Invalid condition format")
+		return rows
+	}
+	counter.checkedConditions++
+
+	conditionType, _ := conditionMap["type"].(string)
+	conditionStatus, _ := conditionMap["status"].(string)
+	if conditionToSkip(conditionType) {
+		return rows
+	}
+	switch conditionStatus {
+	case "True":
+		if conditionTypeHasPositiveMeaning(gvr.Resource, conditionType) {
+			return rows
+		}
+	case "False":
+		if conditionTypeHasNegativeMeaning(gvr.Resource, conditionType) {
+			return rows
+		}
+	}
+	conditionReason, _ := conditionMap["reason"].(string)
+	if conditionDone(conditionType, conditionStatus, conditionReason) {
+		return rows
+	}
+	s, _ := conditionMap["lastTransitionTime"].(string)
+	conditionLastTransitionTime := time.Time{}
+	if s != "" {
+		conditionLastTransitionTime, _ = time.Parse(time.RFC3339, s)
+	}
+	conditionMessage, _ := conditionMap["message"].(string)
+	rows = append(rows, conditionRow{
+		conditionType, conditionStatus,
+		conditionReason, conditionMessage, conditionLastTransitionTime,
+	})
+	return rows
 }
 
 func conditionToSkip(ct string) bool {
@@ -356,7 +420,7 @@ func conditionTypeHasPositiveMeaning(resource string, ct string) bool {
 	return false
 }
 
-func conditionDone(resource string, conditionType string, conditionStatus string, conditionReason string) bool {
+func conditionDone(conditionType string, conditionStatus string, conditionReason string) bool {
 	// machinesets demo-1-md-0-q9qzp-6gsw9 Condition MachinesReady=False Deleted @ Machine/demo-1-md-0-q9qzp-6gsw9-vkxrp ""
 	// The reason contains "@ ...". We need to split that
 	if conditionType == "MachinesReady" {
@@ -403,6 +467,7 @@ type handleResourceTypeOutput struct {
 	checkedResourceTypes int32
 	checkedResources     int32
 	checkedConditions    int32
+	checkAgain           bool
 }
 
 func handleResourceType(input handleResourceTypeInput) handleResourceTypeOutput {
@@ -429,7 +494,6 @@ func handleResourceType(input handleResourceTypeInput) handleResourceTypeOutput 
 		return output
 	}
 
-	printResources(args, list, gvr, &output, input.workerID)
-
+	output.checkAgain = printResources(args, list, gvr, &output, input.workerID)
 	return output
 }
