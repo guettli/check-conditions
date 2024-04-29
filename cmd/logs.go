@@ -10,6 +10,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 
+	"github.com/guettli/check-conditions/pkg/checkconditions"
 	"github.com/spf13/cobra"
 )
 
@@ -26,7 +27,7 @@ func init() {
 	rootCmd.AddCommand(logsCmd)
 }
 
-func runLogs(args Arguments) {
+func runLogs(args checkconditions.Arguments) {
 	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
 	configOverrides := &clientcmd.ConfigOverrides{}
 	kubeconfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, configOverrides)
