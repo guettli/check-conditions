@@ -88,13 +88,16 @@ func RunAllOnce(args Arguments) bool {
 		fmt.Println(err.Error())
 		os.Exit(1)
 	}
+	durationInt := int(time.Since(args.StartTime).Seconds())
+	// durationStr as string, without subseconds
+	durationStr := time.Duration(durationInt * int(time.Second)).String()
 	if !(args.WhileForever || checkAgain) {
 		if args.WhileRegex != nil {
 			fmt.Printf("Regex %q did not match. Stopping\n", args.WhileRegex.String())
 		}
-		duration := time.Since(args.StartTime)
-		if duration > time.Duration(5*time.Second) { //nolint:gomnd
-			fmt.Printf("Stopping after %s\n", duration.String())
+
+		if durationInt > 5 { //nolint:gomnd
+			fmt.Printf("Stopping after %s\n", durationStr)
 		}
 		return false
 	}
@@ -103,10 +106,11 @@ func RunAllOnce(args Arguments) bool {
 	if args.WhileRegex != nil {
 		pre = fmt.Sprintf("Regex %q did match. ", args.WhileRegex.String())
 	}
-	fmt.Printf("%sWaiting %d seconds, then checking again. %s.\n",
+	fmt.Printf("%sWaiting %d seconds, then checking again. %s (%s).\n\n",
 		pre,
 		sleepSeconds,
-		time.Now().Format("2006-01-02 15:04:05 -0700 MST"))
+		time.Now().Format("2006-01-02 15:04:05 -0700 MST"),
+		durationStr)
 	time.Sleep(time.Duration(sleepSeconds * int(time.Second)))
 	return true
 }
