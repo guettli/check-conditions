@@ -6,14 +6,13 @@ Takes only few milliseconds for small clusters running on localhost. Might take 
 
 Please provide feedback, PRs are welcome.
 
-# Background and Goal
+## Background and Goal
 
-I develop Kubernetes controllers in Go. I develop software since ages, 
+I develop Kubernetes controllers in Go. I develop software since ages,
 but Kubernetes and Go are still a bit new to me.
 
 I as a developer of a controllers want an overview. I want to see the difference between
 the desired state and the observed state.
-
 
 If a controller discover that the observed state does not match the desired state,
 it could ...
@@ -29,23 +28,23 @@ But how to monitor many conditions of many resources?
 
 I found no tool which monitors all conditions of all resource objects. So I wrote this tiny tool.
 
-# Executing
+## Executing
 
 ```
 go run github.com/guettli/check-conditions@latest all
 ```
 
-# Terminology
+## Terminology
 
 Since I found not good umbrella term for CRDs and core resource types, I use the term CRD.
 
 Related: [Kubernetes API Terminology](https://kubernetes.io/docs/reference/using-api/api-concepts/#standard-api-terminology)
 
-# OK vs Warning?
+## OK vs Warning?
 
 Which conditions should create output and which conditions are ok and can get ignored?
 
-Up to now the code contains some simple lists. 
+Up to now the code contains some simple lists.
 
 Examples:
 
@@ -53,34 +52,34 @@ Examples:
 * *Healthy=True will be ignored
 * *Pressure=False will be ignored.
 
-# Using via shell
+## Command "while"
 
 Imagine you want to get a signal if a condition is gone. For example you want to hear music if the condition "StillProvisioning" is gone.
 
-```
-while go run github.com/guettli/check-conditions@latest all | tee >(grep  StillProvisioning >/dev/null); do sleep 15; echo; date; done; music
-```
+The sub-command "while" takes on optional regex. If not line matches the regex, then command stops.
 
-The `tee` looks complicated, but has the benefit, that you see the changes of the unknown conditions every 15 seconds (not only the lines you greped for).
+If you don't provide a regex, then `check-conditions while` runs forever.
+
+```bash
+go run github.com/guettli/check-conditions@latest while StillProvisioning; music
+```
 
 The script `music` needs to be provided by you.
 
-# From output to `kubectl describe`
+## From output to `kubectl describe`
 
-You just need to copy the first three columns of the output and paste it to `kubectl describe -n ` and then you can have a look at the correspondig resource.
+You just need to copy the first three columns of the output and paste it to `kubectl describe -n` and then you can have a look at the correspondig resource.
 
-# Conditions: Cluster-API vs Kubernetes
+## Conditions: Cluster-API vs Kubernetes
 
 Why I prefer the `status.conditions` of Cluster-API. Related proposal: [Conditions](https://github.com/kubernetes-sigs/cluster-api/blob/main/docs/proposals/20200506-conditions.md)
 
 * True means "fine" or "healthy".
 * There are functions [MarkFalse](https://pkg.go.dev/sigs.k8s.io/cluster-api/util/conditions#MarkFalse), [MarkTrue](https://pkg.go.dev/sigs.k8s.io/cluster-api/util/conditions#MarkTrue) to update the conditions. The function [SetSummary](https://pkg.go.dev/sigs.k8s.io/cluster-api/util/conditions#SetSummary) can get used to set the "Ready" condition according to the other conditions of the resource.
 
-
 The [API convention of Kubernetes about Status and Conditions](https://github.com/kubernetes/community/blob/master/contributors/devel/sig-architecture/api-conventions.md#typical-status-properties) are more general. Here "True" can mean "healthy" (for example "DiskPressure").
 
-
-# TODO
+## TODO
 
 sort output. It is confusing if the second output has a different order than the first output.
 
@@ -88,7 +87,7 @@ check schema of resource before fetching all objects: skip resources which don't
 
 filter by namespace and labels. Maybe interactively. But is there a way to get all labels of the cluster (without reading all resources)?
 
-# Ideas
+## Ideas
 
 List all resource of namespace "foo". `kubectl get all -n foo` does not show CRDs.
 
@@ -110,11 +109,11 @@ Report broken ownerRefs.
 
 HTML GUI via localhost.
 
-Negative conditions are ok for a defined time period. 
+Negative conditions are ok for a defined time period.
 Example: It is ok if a Pod needs 20 seconds to start.
 But it is not ok if it takes 5 minutes.
 
-To make warnings appear sooner after starting the programm 
+To make warnings appear sooner after starting the programm
 (it takes 20 secs even for small clusters), we could
 use some kind of priority. CRDs which had warnings in the past, should
 be checked sooner. This state could be stored in $XDG_CACHE_HOME.
@@ -122,5 +121,3 @@ be checked sooner. This state could be stored in $XDG_CACHE_HOME.
 Eval more than conditions. Everything should be possible.
 How to make ignoring or adding some warnings super flexible?
 The most simple way would be to use Go code.
-
-
