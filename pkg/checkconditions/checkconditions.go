@@ -363,6 +363,9 @@ var conditionTypesOfResourceWithPositiveMeaning = map[string][]string{
 	"hetznerbaremetalhosts": {
 		"RootDeviceHintsValidated",
 	},
+	"clusters": { // postgresql.cnpg.io/v1
+		"ContinuousArchiving",
+	},
 }
 
 var conditionTypesOfResourceWithNegativeMeaning = map[string][]string{
