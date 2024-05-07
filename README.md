@@ -22,7 +22,8 @@ the log message will be outdated.
 
 ... could emit events. Same here: After the next reconciliation the event could be outdated.
 
-... could write to status.conditions. That's what we currently do.
+... could write to status.conditions. That's what we currently do. Conditions have the benefit, that a warning disappears,
+as soon as the desired state is reached. If you look at logs or events, you never know if this represents the current state.
 
 But how to monitor many conditions of many resources?
 
