@@ -56,7 +56,7 @@ Examples:
 
 Imagine you want to get a signal if a condition is gone. For example you want to hear music if the condition "StillProvisioning" is gone.
 
-The sub-command "while" takes on optional regex. If not line matches the regex, then command stops.
+The sub-command "while" takes on optional regex. If no line matches the regex, then command stops.
 
 If you don't provide a regex, then `check-conditions while` runs forever.
 
