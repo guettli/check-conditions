@@ -366,6 +366,9 @@ var conditionTypesOfResourceWithPositiveMeaning = map[string][]string{
 	"clusters": { // postgresql.cnpg.io/v1
 		"ContinuousArchiving",
 	},
+	"pods": {
+		"PodReadyToStartContainers",
+	},
 }
 
 var conditionTypesOfResourceWithNegativeMeaning = map[string][]string{
