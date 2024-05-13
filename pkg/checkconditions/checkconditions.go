@@ -342,6 +342,7 @@ func conditionToSkip(ct string) bool {
 		"DisruptionAllowed",
 		"LoadBalancerAttachedToNetwork",
 		"NetworkAttached",
+		"PodReadyToStartContainers", // completed pods have "False".
 	}
 	return slices.Contains(toSkip, ct)
 }
@@ -365,9 +366,6 @@ var conditionTypesOfResourceWithPositiveMeaning = map[string][]string{
 	},
 	"clusters": { // postgresql.cnpg.io/v1
 		"ContinuousArchiving",
-	},
-	"pods": {
-		"PodReadyToStartContainers",
 	},
 }
 
