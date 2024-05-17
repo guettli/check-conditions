@@ -367,6 +367,10 @@ var conditionTypesOfResourceWithPositiveMeaning = map[string][]string{
 	"clusters": { // postgresql.cnpg.io/v1
 		"ContinuousArchiving",
 	},
+	"clusteraddons": {
+		"ClusterAddonConfigValidated",
+		"ClusterAddonHelmChartUntarred",
+	},
 }
 
 var conditionTypesOfResourceWithNegativeMeaning = map[string][]string{
