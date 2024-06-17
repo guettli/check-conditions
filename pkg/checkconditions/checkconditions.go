@@ -320,6 +320,12 @@ func handleCondition(condition interface{}, counter *handleResourceTypeOutput, g
 		}
 	}
 	conditionReason, _ := conditionMap["reason"].(string)
+	conditionLine := fmt.Sprintf("%s %s=%s %s", gvr.Resource, conditionType, conditionStatus, conditionReason)
+	for _, r := range conditionLinesToIgnoreRegexs {
+		if r.MatchString(conditionLine) {
+			return rows
+		}
+	}
 	if conditionDone(conditionType, conditionStatus, conditionReason) {
 		return rows
 	}
@@ -383,6 +389,11 @@ var conditionTypesOfResourceWithNegativeMeaning = map[string][]string{
 	"horizontalpodautoscalers": {
 		"ScalingLimited",
 	},
+}
+
+var conditionLinesToIgnoreRegexs = []*regexp.Regexp{
+	regexp.MustCompile("machinesets MachinesReady=False Deleted @.*"),
+	regexp.MustCompile("machinesets Ready=False Deleted @.*"),
 }
 
 func conditionTypeHasPositiveMeaning(resource string, ct string) bool {
