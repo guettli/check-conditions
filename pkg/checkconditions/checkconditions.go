@@ -320,7 +320,8 @@ func handleCondition(condition interface{}, counter *handleResourceTypeOutput, g
 		}
 	}
 	conditionReason, _ := conditionMap["reason"].(string)
-	conditionLine := fmt.Sprintf("%s %s=%s %s", gvr.Resource, conditionType, conditionStatus, conditionReason)
+	conditionMessage, _ := conditionMap["message"].(string)
+	conditionLine := fmt.Sprintf("%s %s=%s %s %q", gvr.Resource, conditionType, conditionStatus, conditionReason, conditionMessage)
 	for _, r := range conditionLinesToIgnoreRegexs {
 		if r.MatchString(conditionLine) {
 			return rows
@@ -334,7 +335,6 @@ func handleCondition(condition interface{}, counter *handleResourceTypeOutput, g
 	if s != "" {
 		conditionLastTransitionTime, _ = time.Parse(time.RFC3339, s)
 	}
-	conditionMessage, _ := conditionMap["message"].(string)
 	rows = append(rows, conditionRow{
 		conditionType, conditionStatus,
 		conditionReason, conditionMessage, conditionLastTransitionTime,
@@ -377,6 +377,13 @@ var conditionTypesOfResourceWithPositiveMeaning = map[string][]string{
 		"ClusterAddonConfigValidated",
 		"ClusterAddonHelmChartUntarred",
 	},
+	"engineimages": { // Longhorn
+		"ready",
+	},
+	"nodes": {
+		"Schedulable", // Longhorn
+		"MountPropagation",
+	},
 }
 
 var conditionTypesOfResourceWithNegativeMeaning = map[string][]string{
@@ -391,9 +398,14 @@ var conditionTypesOfResourceWithNegativeMeaning = map[string][]string{
 	},
 }
 
+// To create new IngoreRegex take the line you see and remove the namespace, the resource name and the time from that line.
+// Example:
+// from: longhorn-system backuptargets default Condition Unavailable=True Unavailable "backup target URL is empty" (5m21s)
+// to: `backuptargets Unavailable=True Unavailable "backup target URL is empty"`
 var conditionLinesToIgnoreRegexs = []*regexp.Regexp{
 	regexp.MustCompile("machinesets MachinesReady=False Deleted @.*"),
 	regexp.MustCompile("machinesets Ready=False Deleted @.*"),
+	regexp.MustCompile(`backuptargets Unavailable=True Unavailable "backup target URL is empty"`),
 }
 
 func conditionTypeHasPositiveMeaning(resource string, ct string) bool {
