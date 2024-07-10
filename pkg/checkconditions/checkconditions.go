@@ -405,7 +405,18 @@ var conditionTypesOfResourceWithNegativeMeaning = map[string][]string{
 var conditionLinesToIgnoreRegexs = []*regexp.Regexp{
 	regexp.MustCompile("machinesets MachinesReady=False Deleted @.*"),
 	regexp.MustCompile("machinesets Ready=False Deleted @.*"),
+
+	// Longhorn
 	regexp.MustCompile(`backuptargets Unavailable=True Unavailable "backup target URL is empty"`),
+	regexp.MustCompile(`engines InstanceCreation=True`),
+	regexp.MustCompile(`engines FilesystemReadOnly=False`),
+	regexp.MustCompile(`replicas InstanceCreation=True`),
+	regexp.MustCompile(`replicas FilesystemReadOnly=False`),
+	regexp.MustCompile(`replicas WaitForBackingImage=False`),
+	regexp.MustCompile(`volumes WaitForBackingImage=False`),
+	regexp.MustCompile(`volumes TooManySnapshots=False`),
+	regexp.MustCompile(`volumes Scheduled=True`),
+	regexp.MustCompile(`volumes Restore=False`),
 }
 
 func conditionTypeHasPositiveMeaning(resource string, ct string) bool {
