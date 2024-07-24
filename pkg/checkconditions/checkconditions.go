@@ -442,6 +442,7 @@ func conditionTypeHasPositiveMeaning(resource string, ct string) bool {
 		"Passed",
 		"PodScheduled",
 		"Progressing",
+		"ProviderUpgraded",
 		"Provisioned",
 		"Reachable",
 		"Ready",
@@ -451,7 +452,7 @@ func conditionTypeHasPositiveMeaning(resource string, ct string) bool {
 		"Succeeded",
 		"Synced",
 		"UpToDate",
-		"ProviderUpgraded",
+		"Valid",
 	} {
 		if strings.HasSuffix(ct, suffix) {
 			return true
