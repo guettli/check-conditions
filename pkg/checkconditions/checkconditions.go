@@ -275,6 +275,7 @@ func printConditions(args *Arguments, conditions []interface{}, counter *handleR
 		}
 	}
 	again := false
+	lines := make([]string, 0, len(rows))
 	for _, r := range rows {
 		if skipReadyCondition && r.conditionType == readyString {
 			continue
@@ -286,12 +287,16 @@ func printConditions(args *Arguments, conditions []interface{}, counter *handleR
 		}
 		outLine := fmt.Sprintf("  %s %s %s Condition %s=%s %s %q (%s)", obj.GetNamespace(), gvr.Resource, obj.GetName(), r.conditionType, r.conditionStatus,
 			r.conditionReason, r.conditionMessage, duration)
-		fmt.Println(outLine)
+		lines = append(lines, outLine)
 		if args.WhileRegex != nil {
 			if args.WhileRegex.MatchString(outLine) {
 				again = true
 			}
 		}
+	}
+	slices.Sort(lines)
+	for _, line := range lines {
+		fmt.Println(line)
 	}
 	return again
 }
