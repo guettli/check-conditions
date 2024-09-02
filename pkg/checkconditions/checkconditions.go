@@ -44,12 +44,14 @@ type Counter struct {
 	checkedResourceTypes int32
 	startTime            time.Time
 	checkAgain           bool
+	lines                []string
 }
 
 func (c *Counter) add(o handleResourceTypeOutput) {
 	c.checkedResources += o.checkedResources
 	c.checkedConditions += o.checkedConditions
 	c.checkedResourceTypes += o.checkedResourceTypes
+	c.lines = append(c.lines, o.lines...)
 	if o.checkAgain {
 		c.checkAgain = true
 	}
@@ -162,6 +164,10 @@ func RunCheckAllConditions(config *restclient.Config, args Arguments) (bool, err
 	close(jobs)
 	wg.Wait()
 	close(results)
+	slices.Sort(counter.lines)
+	for _, line := range counter.lines {
+		fmt.Println(line)
+	}
 	fmt.Printf("Checked %d conditions of %d resources of %d types. Duration: %s\n",
 		counter.checkedConditions, counter.checkedResources, counter.checkedResourceTypes, time.Since(counter.startTime).Round(time.Millisecond))
 	return counter.checkAgain, nil
@@ -208,8 +214,7 @@ func containsSlash(s string) bool {
 // printResources returns true if the conditions should get checked again N seconds later.
 func printResources(args *Arguments, list *unstructured.UnstructuredList, gvr schema.GroupVersionResource,
 	counter *handleResourceTypeOutput, workerID int32,
-) bool {
-	again := false
+) (lines []string, again bool) {
 	for _, obj := range list.Items {
 		counter.checkedResources++
 		var conditions []interface{}
@@ -223,14 +228,16 @@ func printResources(args *Arguments, list *unstructured.UnstructuredList, gvr sc
 		if err != nil {
 			panic(err)
 		}
-		if printConditions(args, conditions, counter, gvr, obj) {
+		subLines, a := printConditions(args, conditions, counter, gvr, obj)
+		if a {
 			again = true
 		}
+		lines = append(lines, subLines...)
 	}
 	if args.Verbose {
 		fmt.Printf("    checked %s %s %s workerID=%d\n", gvr.Resource, gvr.Group, gvr.Version, workerID)
 	}
-	return again
+	return lines, again
 }
 
 type conditionRow struct {
@@ -246,7 +253,7 @@ var readyString = "Ready"
 // printConditions returns true if the conditions should be checked again N seconds later.
 func printConditions(args *Arguments, conditions []interface{}, counter *handleResourceTypeOutput,
 	gvr schema.GroupVersionResource, obj unstructured.Unstructured,
-) bool {
+) (lines []string, again bool) {
 	var rows []conditionRow
 	for _, condition := range conditions {
 		rows = handleCondition(condition, counter, gvr, rows)
@@ -274,8 +281,6 @@ func printConditions(args *Arguments, conditions []interface{}, counter *handleR
 			}
 		}
 	}
-	again := false
-	lines := make([]string, 0, len(rows))
 	for _, r := range rows {
 		if skipReadyCondition && r.conditionType == readyString {
 			continue
@@ -294,11 +299,7 @@ func printConditions(args *Arguments, conditions []interface{}, counter *handleR
 			}
 		}
 	}
-	slices.Sort(lines)
-	for _, line := range lines {
-		fmt.Println(line)
-	}
-	return again
+	return lines, again
 }
 
 func handleCondition(condition interface{}, counter *handleResourceTypeOutput, gvr schema.GroupVersionResource, rows []conditionRow) []conditionRow {
@@ -521,6 +522,7 @@ type handleResourceTypeOutput struct {
 	checkedResources     int32
 	checkedConditions    int32
 	checkAgain           bool
+	lines                []string
 }
 
 func handleResourceType(input handleResourceTypeInput) handleResourceTypeOutput {
@@ -547,6 +549,8 @@ func handleResourceType(input handleResourceTypeInput) handleResourceTypeOutput 
 		return output
 	}
 
-	output.checkAgain = printResources(args, list, gvr, &output, input.workerID)
+	lines, again := printResources(args, list, gvr, &output, input.workerID)
+	output.checkAgain = again
+	output.lines = lines
 	return output
 }
