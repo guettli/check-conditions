@@ -387,8 +387,9 @@ var conditionTypesOfResourceWithPositiveMeaning = map[string][]string{
 		"ready",
 	},
 	"nodes": {
-		"Schedulable", // Longhorn
-		"MountPropagation",
+		"Schedulable",      // Longhorn
+		"MountPropagation", // Longhorn
+		"RequiredPackages", // Longhorn
 	},
 }
 
