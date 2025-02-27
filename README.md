@@ -122,3 +122,7 @@ be checked sooner. This state could be stored in $XDG_CACHE_HOME.
 Eval more than conditions. Everything should be possible.
 How to make ignoring or adding some warnings super flexible?
 The most simple way would be to use Go code.
+
+## Related
+
+[guettli/watchall: Watch all Kubernetes Resources](https://github.com/guettli/watchall)
