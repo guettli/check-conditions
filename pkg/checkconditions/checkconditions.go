@@ -400,6 +400,11 @@ var conditionTypesOfResourceWithNegativeMeaning = map[string][]string{
 		"ReadonlyFilesystem",
 		"FrequentUnregisterNetDevice",
 		"NTPProblem",
+		"CperHardwareErrorFatal",
+		"DisksFailure",
+		"DisksHealthy",
+		"KubeletNeedsRestart",
+		"XfsShutdown",
 	},
 	"horizontalpodautoscalers": {
 		"ScalingLimited",
