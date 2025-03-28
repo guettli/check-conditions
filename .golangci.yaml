@@ -1,15 +1,31 @@
-version: v2
+version: "2"
 linters:
   disable:
-    - forbidigo
-    - varnamelen
-    - nlreturn
-    - gochecknoglobals
-    - exhaustivestruct
-    - exhaustruct
     - depguard
-    - wsl
-    - lll # line length. Maybe later auto-format the code
+    - exhaustruct
+    - forbidigo
+    - gochecknoglobals
     - gochecknoinits
-    - gci # order of imports. Maybe later auto-format the code
+    - lll
     - mnd
+    - nlreturn
+    - varnamelen
+    - wsl
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

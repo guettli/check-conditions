@@ -65,7 +65,7 @@ func RunAllOnce(args Arguments) (bool, error) {
 
 	config, err := kubeconfig.ClientConfig()
 	if err != nil {
-		return false, fmt.Errorf("Error creating client config: %w", err)
+		return false, fmt.Errorf("error creating client config: %w", err)
 	}
 
 	// 80 concurrent requests were served in roughly 200ms
@@ -110,8 +110,7 @@ func runWhileInner(arguments Arguments) (bool, error) {
 		fmt.Printf("Regex %q did not match. Stopping\n", arguments.WhileRegex.String())
 		return false, nil
 	}
-	pre := "Running forever. "
-	pre = fmt.Sprintf("Regex %q did match. ", arguments.WhileRegex.String())
+	pre := fmt.Sprintf("Regex %q did match. ", arguments.WhileRegex.String())
 
 	durationInt := int(time.Since(arguments.ProgrammStartTime).Seconds())
 	// durationStr as string, without subseconds
