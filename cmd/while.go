@@ -11,21 +11,27 @@ import (
 
 var whileCmd = &cobra.Command{
 	Use:   "while your-regex",
-	Short: "Check all conditions of all api-resources, repeat until regex does not match anymore.",
-	Long:  `Check conditions until the give regex does not match anymore.`,
+	Short: "Check all conditions of all api-resources, repeat until regex does not match anymore. Use '.' to wait until all conditions are healthy.",
 	Args:  cobra.MatchAll(cobra.MaximumNArgs(1)),
 	Run: func(cmd *cobra.Command, args []string) {
-		if len(args) > 0 {
-			r, err := regexp.Compile(args[0])
-			if err != nil {
-				fmt.Println(err)
-				os.Exit(1)
-			}
-			arguments.WhileRegex = r
-		} else {
-			arguments.WhileForever = true
+		if len(args) != 1 {
+			fmt.Println("Please provide exactly one argument: your-regex")
+			os.Exit(3)
 		}
-		checkconditions.RunAll(arguments)
+
+		r, err := regexp.Compile(args[0])
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(3)
+		}
+		arguments.WhileRegex = r
+
+		err = checkconditions.RunWhileRegex(arguments)
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(3)
+		}
+		os.Exit(0)
 	},
 }
 

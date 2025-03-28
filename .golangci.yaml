@@ -1,5 +1,5 @@
+version: v2
 linters:
-  enable-all: true
   disable:
     - forbidigo
     - varnamelen
@@ -12,3 +12,4 @@ linters:
     - lll # line length. Maybe later auto-format the code
     - gochecknoinits
     - gci # order of imports. Maybe later auto-format the code
+    - mnd

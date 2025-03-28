@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"os"
+	"time"
 
 	"github.com/guettli/check-conditions/pkg/checkconditions"
 	"github.com/spf13/cobra"
@@ -29,9 +30,9 @@ func Execute() {
 var arguments = checkconditions.Arguments{}
 
 func init() {
-	// Here you will define your flags and configuration settings.
-	// Cobra supports persistent flags, which, if defined here,
-	// will be global for your application.
+	arguments.ProgrammStartTime = time.Now()
 
 	rootCmd.PersistentFlags().BoolVarP(&arguments.Verbose, "verbose", "v", false, "Create more output")
+
+	rootCmd.PersistentFlags().DurationVarP(&arguments.Sleep, "sleep", "s", 15*time.Second, "Optional sleep duration (default: 5s)")
 }

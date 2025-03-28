@@ -21,10 +21,10 @@ import (
 )
 
 type Arguments struct {
-	Verbose      bool
-	WhileRegex   *regexp.Regexp
-	WhileForever bool
-	StartTime    time.Time
+	Verbose           bool
+	Sleep             time.Duration
+	WhileRegex        *regexp.Regexp
+	ProgrammStartTime time.Time
 }
 
 var resourcesToSkip = []string{
@@ -43,7 +43,7 @@ type Counter struct {
 	checkedConditions    int32
 	checkedResourceTypes int32
 	startTime            time.Time
-	checkAgain           bool
+	whileRegexDidMatch   bool
 	lines                []string
 }
 
@@ -52,31 +52,20 @@ func (c *Counter) add(o handleResourceTypeOutput) {
 	c.checkedConditions += o.checkedConditions
 	c.checkedResourceTypes += o.checkedResourceTypes
 	c.lines = append(c.lines, o.lines...)
-	if o.checkAgain {
-		c.checkAgain = true
+	if o.whileRegexDidMatch {
+		c.whileRegexDidMatch = true
 	}
 }
 
-func RunAll(args Arguments) {
-	args.StartTime = time.Now()
-	for {
-		if RunAllOnce(args) {
-			continue
-		}
-		break
-	}
-}
-
-// RunAllOnce returns true if command should run again.
-func RunAllOnce(args Arguments) bool {
+// RunAllOnce returns true if an unhealthy condition was found.
+func RunAllOnce(args Arguments) (bool, error) {
 	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
 	configOverrides := &clientcmd.ConfigOverrides{}
 	kubeconfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, configOverrides)
 
 	config, err := kubeconfig.ClientConfig()
 	if err != nil {
-		fmt.Println(err.Error())
-		os.Exit(1)
+		return false, fmt.Errorf("Error creating client config: %w", err)
 	}
 
 	// 80 concurrent requests were served in roughly 200ms
@@ -85,38 +74,60 @@ func RunAllOnce(args Arguments) bool {
 	// to wait for getting results from an api-server running at localhost
 	config.QPS = 1000
 	config.Burst = 1000
-	checkAgain, err := RunCheckAllConditions(config, args)
-	if err != nil {
-		fmt.Println(err.Error())
-		os.Exit(1)
-	}
-	durationInt := int(time.Since(args.StartTime).Seconds())
-	// durationStr as string, without subseconds
-	durationStr := time.Duration(durationInt * int(time.Second)).String()
-	if !(args.WhileForever || checkAgain) {
-		if args.WhileRegex != nil {
-			fmt.Printf("Regex %q did not match. Stopping\n", args.WhileRegex.String())
-		}
-
-		if durationInt > 5 { //nolint:gomnd
-			fmt.Printf("Stopping after %s\n", durationStr)
-		}
-		return false
-	}
-	sleepSeconds := 15
-	pre := "Running forever. "
-	if args.WhileRegex != nil {
-		pre = fmt.Sprintf("Regex %q did match. ", args.WhileRegex.String())
-	}
-	fmt.Printf("%sWaiting %d seconds, then checking again. %s (%s).\n\n",
-		pre,
-		sleepSeconds,
-		time.Now().Format("2006-01-02 15:04:05 -0700 MST"),
-		durationStr)
-	time.Sleep(time.Duration(sleepSeconds * int(time.Second)))
-	return true
+	return RunCheckAllConditions(config, args)
 }
 
+func RunForever(args Arguments) error {
+	for {
+		_, err := RunAllOnce(args)
+		if err != nil {
+			return err
+		}
+		time.Sleep(args.Sleep)
+		fmt.Printf("\n%s\n", time.Now().Format("2006-01-02 15:04:05 -0700 MST"))
+	}
+}
+
+func RunWhileRegex(arguments Arguments) error {
+	for {
+		again, err := runWhileInner(arguments)
+		if err != nil {
+			return err
+		}
+		if !again {
+			return nil
+		}
+	}
+}
+
+// return true if the while-regex matched
+func runWhileInner(arguments Arguments) (bool, error) {
+	unhealthy, err := RunAllOnce(arguments)
+	if err != nil {
+		return false, err
+	}
+	if !unhealthy {
+		fmt.Printf("Regex %q did not match. Stopping\n", arguments.WhileRegex.String())
+		return false, nil
+	}
+	pre := "Running forever. "
+	pre = fmt.Sprintf("Regex %q did match. ", arguments.WhileRegex.String())
+
+	durationInt := int(time.Since(arguments.ProgrammStartTime).Seconds())
+	// durationStr as string, without subseconds
+	durationStr := time.Duration(durationInt * int(time.Second)).String()
+
+	fmt.Printf("%sWaiting %s, then checking again. %s (%s).\n\n",
+		pre,
+		arguments.Sleep.String(),
+		time.Now().Format("2006-01-02 15:04:05 -0700 MST"),
+		durationStr)
+	time.Sleep(time.Duration(arguments.Sleep))
+	return true, nil
+}
+
+// If arguments.WhileRegex, then return true if there was a matching unhealthy condition.
+// Otherwise return true if there was at least one unhealthy condition.
 func RunCheckAllConditions(config *restclient.Config, args Arguments) (bool, error) {
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
@@ -170,7 +181,16 @@ func RunCheckAllConditions(config *restclient.Config, args Arguments) (bool, err
 	}
 	fmt.Printf("Checked %d conditions of %d resources of %d types. Duration: %s\n",
 		counter.checkedConditions, counter.checkedResources, counter.checkedResourceTypes, time.Since(counter.startTime).Round(time.Millisecond))
-	return counter.checkAgain, nil
+
+	if args.WhileRegex == nil {
+		// "all" command
+		if len(counter.lines) > 0 {
+			return true, nil
+		}
+		return false, nil
+	}
+
+	return counter.whileRegexDidMatch, nil
 }
 
 func createJobs(serverResources []*metav1.APIResourceList, jobs chan handleResourceTypeInput, args Arguments, dynClient *dynamic.DynamicClient) {
@@ -528,7 +548,7 @@ type handleResourceTypeOutput struct {
 	checkedResourceTypes int32
 	checkedResources     int32
 	checkedConditions    int32
-	checkAgain           bool
+	whileRegexDidMatch   bool
 	lines                []string
 }
 
@@ -557,7 +577,7 @@ func handleResourceType(input handleResourceTypeInput) handleResourceTypeOutput 
 	}
 
 	lines, again := printResources(args, list, gvr, &output, input.workerID)
-	output.checkAgain = again
+	output.whileRegexDidMatch = again
 	output.lines = lines
 	return output
 }
