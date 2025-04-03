@@ -58,7 +58,7 @@ func (c *Counter) add(o handleResourceTypeOutput) {
 }
 
 // RunAllOnce returns true if an unhealthy condition was found.
-func RunAllOnce(args Arguments) (bool, error) {
+func RunAllOnce(ctx context.Context, args Arguments) (bool, error) {
 	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
 	configOverrides := &clientcmd.ConfigOverrides{}
 	kubeconfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, configOverrides)
@@ -74,12 +74,12 @@ func RunAllOnce(args Arguments) (bool, error) {
 	// to wait for getting results from an api-server running at localhost
 	config.QPS = 1000
 	config.Burst = 1000
-	return RunCheckAllConditions(config, args)
+	return RunCheckAllConditions(ctx, config, args)
 }
 
-func RunForever(args Arguments) error {
+func RunForever(ctx context.Context, args Arguments) error {
 	for {
-		_, err := RunAllOnce(args)
+		_, err := RunAllOnce(ctx, args)
 		if err != nil {
 			return err
 		}
@@ -88,9 +88,9 @@ func RunForever(args Arguments) error {
 	}
 }
 
-func RunWhileRegex(arguments Arguments) error {
+func RunWhileRegex(ctx context.Context, arguments Arguments) error {
 	for {
-		again, err := runWhileInner(arguments)
+		again, err := runWhileInner(ctx, arguments)
 		if err != nil {
 			return err
 		}
@@ -101,8 +101,8 @@ func RunWhileRegex(arguments Arguments) error {
 }
 
 // return true if the while-regex matched
-func runWhileInner(arguments Arguments) (bool, error) {
-	unhealthy, err := RunAllOnce(arguments)
+func runWhileInner(ctx context.Context, arguments Arguments) (bool, error) {
+	unhealthy, err := RunAllOnce(ctx, arguments)
 	if err != nil {
 		return false, err
 	}
@@ -127,9 +127,9 @@ func runWhileInner(arguments Arguments) (bool, error) {
 
 // If arguments.WhileRegex, then return true if there was a matching unhealthy condition.
 // Otherwise return true if there was at least one unhealthy condition.
-func RunCheckAllConditions(config *restclient.Config, args Arguments) (bool, error) {
+func RunCheckAllConditions(ctx context.Context, config *restclient.Config, args Arguments) (bool, error) {
 	// Get the list of all API resources available
-	counter, err := RunAndGetCounter(config, args)
+	counter, err := RunAndGetCounter(ctx, config, args)
 	if err != nil {
 		return false, err
 	}
@@ -150,7 +150,7 @@ func RunCheckAllConditions(config *restclient.Config, args Arguments) (bool, err
 	return counter.WhileRegexDidMatch, nil
 }
 
-func RunAndGetCounter(config *restclient.Config, args Arguments) (Counter, error) {
+func RunAndGetCounter(ctx context.Context, config *restclient.Config, args Arguments) (Counter, error) {
 	counter := Counter{StartTime: time.Now()}
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
@@ -182,7 +182,7 @@ func RunAndGetCounter(config *restclient.Config, args Arguments) (Counter, error
 	// Without: 320ms
 	// With 10 or more workers: 190ms
 
-	createWorkers(&wg, jobs, results)
+	createWorkers(ctx, &wg, jobs, results)
 
 	go func() {
 		for result := range results {
@@ -220,14 +220,14 @@ func createJobs(serverResources []*metav1.APIResourceList, jobs chan handleResou
 	}
 }
 
-func createWorkers(wg *sync.WaitGroup, jobs chan handleResourceTypeInput, results chan handleResourceTypeOutput) {
+func createWorkers(ctx context.Context, wg *sync.WaitGroup, jobs chan handleResourceTypeInput, results chan handleResourceTypeOutput) {
 	for i := 0; i < 10; i++ {
 		wg.Add(1)
 		go func(workerID int32) {
 			defer wg.Done()
 			for input := range jobs {
 				input.workerID = workerID
-				results <- handleResourceType(input)
+				results <- handleResourceType(ctx, input)
 			}
 		}(int32(i))
 	}
@@ -558,7 +558,7 @@ type handleResourceTypeOutput struct {
 	lines                []string
 }
 
-func handleResourceType(input handleResourceTypeInput) handleResourceTypeOutput {
+func handleResourceType(ctx context.Context, input handleResourceTypeInput) handleResourceTypeOutput {
 	var output handleResourceTypeOutput
 
 	args := input.args
@@ -575,7 +575,7 @@ func handleResourceType(input handleResourceTypeInput) handleResourceTypeOutput 
 
 	output.checkedResourceTypes++
 
-	list, err := dynClient.Resource(gvr).List(context.TODO(), metav1.ListOptions{})
+	list, err := dynClient.Resource(gvr).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		fmt.Printf("..Error listing %s: %v. group %q version %q resource %q\n", name, err,
 			gvr.Group, gvr.Version, gvr.Resource)

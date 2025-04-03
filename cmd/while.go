@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"regexp"
@@ -26,7 +27,7 @@ var whileCmd = &cobra.Command{
 		}
 		arguments.WhileRegex = r
 
-		err = checkconditions.RunWhileRegex(arguments)
+		err = checkconditions.RunWhileRegex(context.Background(), arguments)
 		if err != nil {
 			fmt.Println(err)
 			os.Exit(3)
