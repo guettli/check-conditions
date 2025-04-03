@@ -39,21 +39,21 @@ var resourcesToSkip = []string{
 }
 
 type Counter struct {
-	checkedResources     int32
-	checkedConditions    int32
-	checkedResourceTypes int32
-	startTime            time.Time
-	whileRegexDidMatch   bool
-	lines                []string
+	CheckedResources     int32
+	CheckedConditions    int32
+	CheckedResourceTypes int32
+	StartTime            time.Time
+	WhileRegexDidMatch   bool
+	Lines                []string
 }
 
 func (c *Counter) add(o handleResourceTypeOutput) {
-	c.checkedResources += o.checkedResources
-	c.checkedConditions += o.checkedConditions
-	c.checkedResourceTypes += o.checkedResourceTypes
-	c.lines = append(c.lines, o.lines...)
+	c.CheckedResources += o.checkedResources
+	c.CheckedConditions += o.checkedConditions
+	c.CheckedResourceTypes += o.checkedResourceTypes
+	c.Lines = append(c.Lines, o.lines...)
 	if o.whileRegexDidMatch {
-		c.whileRegexDidMatch = true
+		c.WhileRegexDidMatch = true
 	}
 }
 
@@ -133,25 +133,25 @@ func RunCheckAllConditions(config *restclient.Config, args Arguments) (bool, err
 	if err != nil {
 		return false, err
 	}
-	for _, line := range counter.lines {
+	for _, line := range counter.Lines {
 		fmt.Println(line)
 	}
 	fmt.Printf("Checked %d conditions of %d resources of %d types. Duration: %s\n",
-		counter.checkedConditions, counter.checkedResources, counter.checkedResourceTypes, time.Since(counter.startTime).Round(time.Millisecond))
+		counter.CheckedConditions, counter.CheckedResources, counter.CheckedResourceTypes, time.Since(counter.StartTime).Round(time.Millisecond))
 
 	if args.WhileRegex == nil {
 		// "all" command
-		if len(counter.lines) > 0 {
+		if len(counter.Lines) > 0 {
 			return true, nil
 		}
 		return false, nil
 	}
 
-	return counter.whileRegexDidMatch, nil
+	return counter.WhileRegexDidMatch, nil
 }
 
 func RunAndGetCounter(config *restclient.Config, args Arguments) (Counter, error) {
-	counter := Counter{startTime: time.Now()}
+	counter := Counter{StartTime: time.Now()}
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		return counter, fmt.Errorf("error creating clientset: %w", err)
@@ -195,7 +195,7 @@ func RunAndGetCounter(config *restclient.Config, args Arguments) (Counter, error
 	close(jobs)
 	wg.Wait()
 	close(results)
-	slices.Sort(counter.lines)
+	slices.Sort(counter.Lines)
 	return counter, nil
 }
 
