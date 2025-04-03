@@ -128,53 +128,11 @@ func runWhileInner(arguments Arguments) (bool, error) {
 // If arguments.WhileRegex, then return true if there was a matching unhealthy condition.
 // Otherwise return true if there was at least one unhealthy condition.
 func RunCheckAllConditions(config *restclient.Config, args Arguments) (bool, error) {
-	clientset, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		panic(err.Error())
-	}
-
-	dynClient, err := dynamic.NewForConfig(config)
-	if err != nil {
-		panic(err.Error())
-	}
-
-	discoveryClient := clientset.Discovery()
-
 	// Get the list of all API resources available
-	serverResources, err := discoveryClient.ServerPreferredResources()
+	counter, err := RunAndGetCounter(config, args)
 	if err != nil {
-		if discovery.IsGroupDiscoveryFailedError(err) {
-			fmt.Printf("WARNING: The Kubernetes server has an orphaned API service. Server reports: %s\n", err.Error())
-			fmt.Printf("WARNING: To fix this, kubectl delete apiservice <service-name>\n")
-		} else {
-			panic(err)
-		}
+		return false, err
 	}
-
-	jobs := make(chan handleResourceTypeInput)
-	results := make(chan handleResourceTypeOutput)
-	var wg sync.WaitGroup
-
-	// Concurrency needed?
-	// Without: 320ms
-	// With 10 or more workers: 190ms
-
-	createWorkers(&wg, jobs, results)
-
-	counter := Counter{startTime: time.Now()}
-
-	go func() {
-		for result := range results {
-			counter.add(result)
-		}
-	}()
-
-	createJobs(serverResources, jobs, args, dynClient)
-
-	close(jobs)
-	wg.Wait()
-	close(results)
-	slices.Sort(counter.lines)
 	for _, line := range counter.lines {
 		fmt.Println(line)
 	}
@@ -190,6 +148,55 @@ func RunCheckAllConditions(config *restclient.Config, args Arguments) (bool, err
 	}
 
 	return counter.whileRegexDidMatch, nil
+}
+
+func RunAndGetCounter(config *restclient.Config, args Arguments) (Counter, error) {
+	counter := Counter{startTime: time.Now()}
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		return counter, fmt.Errorf("error creating clientset: %w", err)
+	}
+
+	dynClient, err := dynamic.NewForConfig(config)
+	if err != nil {
+		return counter, fmt.Errorf("error creating dynamic client: %w", err)
+	}
+
+	discoveryClient := clientset.Discovery()
+
+	serverResources, err := discoveryClient.ServerPreferredResources()
+	if err != nil {
+		if discovery.IsGroupDiscoveryFailedError(err) {
+			fmt.Printf("WARNING: The Kubernetes server has an orphaned API service. Server reports: %s\n", err.Error())
+			fmt.Printf("WARNING: To fix this, kubectl delete apiservice <service-name>\n")
+		} else {
+			return counter, fmt.Errorf("error getting server preferred resources: %w", err)
+		}
+	}
+
+	jobs := make(chan handleResourceTypeInput)
+	results := make(chan handleResourceTypeOutput)
+	var wg sync.WaitGroup
+
+	// Concurrency needed?
+	// Without: 320ms
+	// With 10 or more workers: 190ms
+
+	createWorkers(&wg, jobs, results)
+
+	go func() {
+		for result := range results {
+			counter.add(result)
+		}
+	}()
+
+	createJobs(serverResources, jobs, args, dynClient)
+
+	close(jobs)
+	wg.Wait()
+	close(results)
+	slices.Sort(counter.lines)
+	return counter, nil
 }
 
 func createJobs(serverResources []*metav1.APIResourceList, jobs chan handleResourceTypeInput, args Arguments, dynClient *dynamic.DynamicClient) {
