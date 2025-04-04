@@ -460,7 +460,7 @@ var conditionLinesToIgnoreRegexs = []*regexp.Regexp{
 	regexp.MustCompile(`volumes TooManySnapshots=False`),
 	regexp.MustCompile(`volumes Scheduled=True`),
 	regexp.MustCompile(`volumes Restore=False`),
-	regexp.MustCompile(`machinesets MachinesReady=False NodeNotFound`),
+	regexp.MustCompile(`machinesets MachinesReady=False NodeNotFound.*`),
 }
 
 func conditionTypeHasPositiveMeaning(resource string, ct string) bool {
