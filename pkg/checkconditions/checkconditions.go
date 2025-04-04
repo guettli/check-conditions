@@ -443,7 +443,7 @@ var conditionTypesOfResourceWithNegativeMeaning = map[string][]string{
 
 // To create new IngoreRegex take the line you see and remove the namespace, the resource name and the time from that line.
 // Example:
-// from: longhorn-system backuptargets default Condition Unavailable=True Unavailable "backup target URL is empty" (5m21s)
+// from: longhorn-system backuptargets myname Condition Unavailable=True Unavailable "backup target URL is empty" (5m21s)
 // to: `backuptargets Unavailable=True Unavailable "backup target URL is empty"`
 var conditionLinesToIgnoreRegexs = []*regexp.Regexp{
 	regexp.MustCompile("machinesets MachinesReady=False Deleted @.*"),
@@ -460,6 +460,7 @@ var conditionLinesToIgnoreRegexs = []*regexp.Regexp{
 	regexp.MustCompile(`volumes TooManySnapshots=False`),
 	regexp.MustCompile(`volumes Scheduled=True`),
 	regexp.MustCompile(`volumes Restore=False`),
+	regexp.MustCompile(`machinesets MachinesReady=False NodeNotFound`),
 }
 
 func conditionTypeHasPositiveMeaning(resource string, ct string) bool {
