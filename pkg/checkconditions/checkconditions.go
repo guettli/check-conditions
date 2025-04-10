@@ -432,7 +432,6 @@ var conditionTypesOfResourceWithNegativeMeaning = map[string][]string{
 		"NTPProblem",
 		"CperHardwareErrorFatal",
 		"DisksFailure",
-		"DisksHealthy",
 		"KubeletNeedsRestart",
 		"XfsShutdown",
 	},
