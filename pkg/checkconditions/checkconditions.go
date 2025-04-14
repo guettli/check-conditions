@@ -320,13 +320,21 @@ func printConditions(args *Arguments, conditions []interface{}, counter *handleR
 			d := time.Since(r.conditionLastTransitionTime)
 			duration = fmt.Sprint(d.Round(time.Second))
 		}
+
 		outLine := fmt.Sprintf("  %s %s %s Condition %s=%s %s %q (%s)", obj.GetNamespace(), gvr.Resource, obj.GetName(), r.conditionType, r.conditionStatus,
 			r.conditionReason, r.conditionMessage, duration)
-		lines = append(lines, outLine)
+
+		addLine := true
 		if args.WhileRegex != nil {
+			addLine = false
 			if args.WhileRegex.MatchString(outLine) {
 				again = true
+				addLine = true
 			}
+		}
+
+		if addLine {
+			lines = append(lines, outLine)
 		}
 	}
 	return lines, again
