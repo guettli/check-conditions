@@ -25,6 +25,7 @@ type Arguments struct {
 	Sleep             time.Duration
 	WhileRegex        *regexp.Regexp
 	ProgrammStartTime time.Time
+	Name              string
 }
 
 var resourcesToSkip = []string{
@@ -136,8 +137,12 @@ func RunCheckAllConditions(ctx context.Context, config *restclient.Config, args 
 	for _, line := range counter.Lines {
 		fmt.Println(line)
 	}
-	fmt.Printf("Checked %d conditions of %d resources of %d types. Duration: %s\n",
-		counter.CheckedConditions, counter.CheckedResources, counter.CheckedResourceTypes, time.Since(counter.StartTime).Round(time.Millisecond))
+	name := args.Name
+	if name != "" {
+		name = " (" + name + ")"
+	}
+	fmt.Printf("Checked %d conditions of %d resources of %d types. Duration: %s%s\n",
+		counter.CheckedConditions, counter.CheckedResources, counter.CheckedResourceTypes, time.Since(counter.StartTime).Round(time.Millisecond), name)
 
 	if args.WhileRegex == nil {
 		// "all" command
