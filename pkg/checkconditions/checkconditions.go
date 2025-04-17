@@ -26,6 +26,7 @@ type Arguments struct {
 	WhileRegex        *regexp.Regexp
 	ProgrammStartTime time.Time
 	Name              string
+	RetryCount        int16
 }
 
 var resourcesToSkip = []string{
@@ -130,10 +131,21 @@ func runWhileInner(ctx context.Context, arguments Arguments) (bool, error) {
 // Otherwise return true if there was at least one unhealthy condition.
 func RunCheckAllConditions(ctx context.Context, config *restclient.Config, args Arguments) (bool, error) {
 	// Get the list of all API resources available
-	counter, err := RunAndGetCounter(ctx, config, args)
-	if err != nil {
-		return false, err
+	var err error
+	var counter Counter
+	for i := 0; i < int(args.RetryCount); i++ {
+		counter, err = RunAndGetCounter(ctx, config, args)
+		if err != nil {
+			fmt.Printf("Error getting server preferred resources (will retry %d times): %v\n",
+				args.RetryCount, err)
+			time.Sleep(1 * time.Second)
+			continue
+		}
 	}
+	if err != nil {
+		return false, fmt.Errorf("error getting server preferred resources: %w", err)
+	}
+
 	for _, line := range counter.Lines {
 		fmt.Println(line)
 	}
