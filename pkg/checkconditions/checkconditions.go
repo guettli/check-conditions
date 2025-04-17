@@ -136,14 +136,14 @@ func RunCheckAllConditions(ctx context.Context, config *restclient.Config, args 
 	for i := 0; i < int(args.RetryCount); i++ {
 		counter, err = RunAndGetCounter(ctx, config, args)
 		if err != nil {
-			fmt.Printf("Error getting server preferred resources (will retry %d times): %v\n",
+			fmt.Printf("an error occured. Will retry %d times: %v\n",
 				args.RetryCount, err)
 			time.Sleep(1 * time.Second)
 			continue
 		}
 	}
 	if err != nil {
-		return false, fmt.Errorf("error getting server preferred resources: %w", err)
+		return false, fmt.Errorf("an error occured. Will retry %d times: %w", args.RetryCount, err)
 	}
 
 	for _, line := range counter.Lines {
