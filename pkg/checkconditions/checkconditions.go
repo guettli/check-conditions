@@ -135,12 +135,13 @@ func RunCheckAllConditions(ctx context.Context, config *restclient.Config, args 
 	var counter Counter
 	for i := 0; i < int(args.RetryCount); i++ {
 		counter, err = RunAndGetCounter(ctx, config, args)
-		if err != nil {
-			fmt.Printf("an error occured. Will retry %d times: %v\n",
-				args.RetryCount, err)
-			time.Sleep(1 * time.Second)
-			continue
+		if err == nil {
+			break
 		}
+		fmt.Printf("an error occured. Will retry %d times: %v\n",
+			args.RetryCount, err)
+		time.Sleep(1 * time.Second)
+		continue
 	}
 	if err != nil {
 		return false, fmt.Errorf("an error occured. Will retry %d times: %w", args.RetryCount, err)
