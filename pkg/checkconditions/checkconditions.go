@@ -30,6 +30,7 @@ type Arguments struct {
 	Name              string
 	RetryCount        int16
 	RetryForEver      bool
+	Timeout           time.Duration
 }
 
 var resourcesToSkip = []string{
@@ -138,6 +139,13 @@ func RunCheckAllConditions(ctx context.Context, config *restclient.Config, args 
 	var counter Counter
 	var i int16
 	for {
+		if args.Timeout > 0 {
+			d := time.Since(args.ProgrammStartTime)
+			if d > args.Timeout {
+				d := d.Round(time.Second)
+				return false, fmt.Errorf("timeout reached after %s", d.String())
+			}
+		}
 		counter, err = RunAndGetCounter(ctx, config, args)
 		if err == nil {
 			// Successful connection, from now on retry forever.
