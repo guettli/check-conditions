@@ -63,7 +63,7 @@ func (c *Counter) add(o handleResourceTypeOutput) {
 }
 
 // RunAllOnce returns true if an unhealthy condition was found.
-func RunAllOnce(ctx context.Context, args Arguments) (bool, error) {
+func RunAllOnce(ctx context.Context, args *Arguments) (bool, error) {
 	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
 	configOverrides := &clientcmd.ConfigOverrides{}
 	kubeconfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, configOverrides)
@@ -82,7 +82,7 @@ func RunAllOnce(ctx context.Context, args Arguments) (bool, error) {
 	return RunCheckAllConditions(ctx, config, args)
 }
 
-func RunForever(ctx context.Context, args Arguments) error {
+func RunForever(ctx context.Context, args *Arguments) error {
 	for {
 		_, err := RunAllOnce(ctx, args)
 		if err != nil {
@@ -93,7 +93,7 @@ func RunForever(ctx context.Context, args Arguments) error {
 	}
 }
 
-func RunWhileRegex(ctx context.Context, arguments Arguments) error {
+func RunWhileRegex(ctx context.Context, arguments *Arguments) error {
 	for {
 		again, err := runWhileInner(ctx, arguments)
 		if err != nil {
@@ -106,7 +106,7 @@ func RunWhileRegex(ctx context.Context, arguments Arguments) error {
 }
 
 // return true if the while-regex matched
-func runWhileInner(ctx context.Context, arguments Arguments) (bool, error) {
+func runWhileInner(ctx context.Context, arguments *Arguments) (bool, error) {
 	unhealthy, err := RunAllOnce(ctx, arguments)
 	if err != nil {
 		return false, err
@@ -132,7 +132,7 @@ func runWhileInner(ctx context.Context, arguments Arguments) (bool, error) {
 
 // If arguments.WhileRegex, then return true if there was a matching unhealthy condition.
 // Otherwise return true if there was at least one unhealthy condition.
-func RunCheckAllConditions(ctx context.Context, config *restclient.Config, args Arguments) (bool, error) {
+func RunCheckAllConditions(ctx context.Context, config *restclient.Config, args *Arguments) (bool, error) {
 	// Get the list of all API resources available
 	var err error
 	var counter Counter
@@ -186,7 +186,7 @@ func RunCheckAllConditions(ctx context.Context, config *restclient.Config, args 
 	return counter.WhileRegexDidMatch, nil
 }
 
-func RunAndGetCounter(ctx context.Context, config *restclient.Config, args Arguments) (Counter, error) {
+func RunAndGetCounter(ctx context.Context, config *restclient.Config, args *Arguments) (Counter, error) {
 	counter := Counter{StartTime: time.Now()}
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
@@ -239,7 +239,7 @@ func RunAndGetCounter(ctx context.Context, config *restclient.Config, args Argum
 	return counter, nil
 }
 
-func createJobs(serverResources []*metav1.APIResourceList, jobs chan handleResourceTypeInput, args Arguments, dynClient *dynamic.DynamicClient) {
+func createJobs(serverResources []*metav1.APIResourceList, jobs chan handleResourceTypeInput, args *Arguments, dynClient *dynamic.DynamicClient) {
 	for _, resourceList := range serverResources {
 		groupVersion, err := schema.ParseGroupVersion(resourceList.GroupVersion)
 		if err != nil {
@@ -248,7 +248,7 @@ func createJobs(serverResources []*metav1.APIResourceList, jobs chan handleResou
 		}
 		for i := range resourceList.APIResources {
 			jobs <- handleResourceTypeInput{
-				args:      &args,
+				args:      args,
 				dynClient: dynClient,
 				gvr: schema.GroupVersionResource{
 					Group:    groupVersion.Group,
