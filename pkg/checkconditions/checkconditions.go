@@ -118,10 +118,12 @@ func runWhileInner(ctx context.Context, arguments *Arguments) (bool, error) {
 	}
 	pre := fmt.Sprintf("Regex %q did match. ", arguments.WhileRegex.String())
 
-	durationInt := int(time.Since(arguments.ProgrammStartTime).Seconds())
-	// durationStr as string, without subseconds
-	durationStr := time.Duration(durationInt * int(time.Second)).String()
-
+	d := time.Since(arguments.ProgrammStartTime)
+	durationStr := d.Round(time.Second).String()
+	if arguments.Timeout > 0 {
+		untilTimeout := arguments.Timeout - d
+		durationStr += ", timeout in " + untilTimeout.Round(time.Second).String()
+	}
 	fmt.Printf("%sWaiting %s, then checking again. %s (%s).\n\n",
 		pre,
 		arguments.Sleep.String(),
