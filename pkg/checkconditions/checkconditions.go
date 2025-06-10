@@ -502,8 +502,11 @@ var conditionTypesOfResourceWithNegativeMeaning = map[string][]string{
 // from: longhorn-system backuptargets myname Condition Unavailable=True Unavailable "backup target URL is empty" (5m21s)
 // to: `backuptargets Unavailable=True Unavailable "backup target URL is empty"`
 var conditionLinesToIgnoreRegexs = []*regexp.Regexp{
+	// Cluster API
 	regexp.MustCompile("machinesets MachinesReady=False Deleted @.*"),
 	regexp.MustCompile("machinesets Ready=False Deleted @.*"),
+	regexp.MustCompile(`machinesets (MachinesReady|Ready)=False NodeNotFound.*`),
+	regexp.MustCompile(`machinedeployments (MachineSetReady|Ready)=False Deleted.*`),
 
 	// Longhorn
 	regexp.MustCompile(`backuptargets Unavailable=True Unavailable "backup target URL is empty"`),
@@ -516,7 +519,6 @@ var conditionLinesToIgnoreRegexs = []*regexp.Regexp{
 	regexp.MustCompile(`volumes TooManySnapshots=False`),
 	regexp.MustCompile(`volumes Scheduled=True`),
 	regexp.MustCompile(`volumes Restore=False`),
-	regexp.MustCompile(`machinesets (MachinesReady|Ready)=False NodeNotFound.*`),
 }
 
 func conditionTypeHasPositiveMeaning(resource string, ct string) bool {
