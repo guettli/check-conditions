@@ -35,13 +35,14 @@ type Arguments struct {
 
 var resourcesToSkip = []string{
 	"bindings",
-	"tokenreviews",
-	"selfsubjectreviews",
-	"selfsubjectaccessreviews",
-	"selfsubjectrulesreviews",
-	"localsubjectaccessreviews",
-	"subjectaccessreviews",
 	"componentstatuses",
+	"endpoints", // Deprecated in 1.33+
+	"localsubjectaccessreviews",
+	"selfsubjectaccessreviews",
+	"selfsubjectreviews",
+	"selfsubjectrulesreviews",
+	"subjectaccessreviews",
+	"tokenreviews",
 }
 
 type Counter struct {
