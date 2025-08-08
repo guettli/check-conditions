@@ -505,6 +505,7 @@ var conditionTypesOfResourceWithNegativeMeaning = map[string][]string{
 var conditionLinesToIgnoreRegexs = []*regexp.Regexp{
 	// Cluster API
 	regexp.MustCompile("machinesets MachinesReady=False Deleted @.*"),
+	regexp.MustCompile("machinesets MachinesReady=False DrainingFailed @."),
 	regexp.MustCompile("machinesets Ready=False Deleted @.*"),
 	regexp.MustCompile(`machinesets (MachinesReady|Ready)=False NodeNotFound.*`),
 	regexp.MustCompile(`machinedeployments (MachineSetReady|Ready)=False Deleted.*`),
