@@ -71,12 +71,9 @@ The script `music` needs to be provided by you.
 
 You just need to copy the first three columns of the output and paste it to `kubectl describe -n` and then you can have a look at the correspondig resource.
 
-## Conditions: Cluster-API vs Kubernetes
+## Conditions in Kubernetes
 
-Why I prefer the `status.conditions` of Cluster-API. Related proposal: [Conditions](https://github.com/kubernetes-sigs/cluster-api/blob/main/docs/proposals/20200506-conditions.md)
-
-* True means "fine" or "healthy".
-* There are functions [MarkFalse](https://pkg.go.dev/sigs.k8s.io/cluster-api/util/conditions#MarkFalse), [MarkTrue](https://pkg.go.dev/sigs.k8s.io/cluster-api/util/conditions#MarkTrue) to update the conditions. The function [SetSummary](https://pkg.go.dev/sigs.k8s.io/cluster-api/util/conditions#SetSummary) can get used to set the "Ready" condition according to the other conditions of the resource.
+* There is package which helps working with Conditions in Go: There are functions [MarkFalse](https://pkg.go.dev/sigs.k8s.io/cluster-api/util/conditions#MarkFalse), [MarkTrue](https://pkg.go.dev/sigs.k8s.io/cluster-api/util/conditions#MarkTrue) to update the conditions. The function [SetSummary](https://pkg.go.dev/sigs.k8s.io/cluster-api/util/conditions#SetSummary) can get used to set the "Ready" condition according to the other conditions of the resource.
 
 The [API convention of Kubernetes about Status and Conditions](https://github.com/kubernetes/community/blob/master/contributors/devel/sig-architecture/api-conventions.md#typical-status-properties) are more general. Here "True" can mean "healthy" (for example "DiskPressure").
 
