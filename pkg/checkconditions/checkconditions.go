@@ -308,7 +308,8 @@ func printResources(args *Arguments, list *unstructured.UnstructuredList, gvr sc
 				// this can happen.
 				continue
 			}
-			panic(err)
+			lines = append(lines, fmt.Sprintf("err of unstructured.NestedSlice(%+v): %s",
+				obj.Object, err.Error()))
 		}
 		subLines, a := printConditions(args, conditions, counter, gvr, obj)
 		if a {
