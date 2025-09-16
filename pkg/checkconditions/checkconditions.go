@@ -26,8 +26,8 @@ type Arguments struct {
 	Verbose bool
 	Sleep   time.Duration
 
-	// Regex for "while" and "waitfor" sub-commands.
-	Regex *regexp.Regexp
+	// WhileRegex for "while" and "waitfor" sub-commands.
+	WhileRegex *regexp.Regexp
 
 	RegexIsWaitFor    bool
 	ProgrammStartTime time.Time
@@ -119,22 +119,22 @@ func runWhileInner(ctx context.Context, arguments *Arguments) (bool, error) {
 	}
 	if !unhealthy && !arguments.RegexIsWaitFor {
 		var msg string
-		msg = fmt.Sprintf("Regex %q did not match. Stopping", arguments.Regex.String())
+		msg = fmt.Sprintf("Regex %q did not match. Stopping", arguments.WhileRegex.String())
 		fmt.Println(msg)
 		return false, nil
 	}
 
 	if unhealthy && arguments.RegexIsWaitFor {
 		var msg string
-		msg = fmt.Sprintf("Regex %q did match. Stopping", arguments.Regex.String())
+		msg = fmt.Sprintf("Regex %q did match. Stopping", arguments.WhileRegex.String())
 		fmt.Println(msg)
 		return false, nil
 	}
 	var pre string
 	if arguments.RegexIsWaitFor {
-		pre = fmt.Sprintf("Regex %q did not match. ", arguments.Regex.String())
+		pre = fmt.Sprintf("Regex %q did not match. ", arguments.WhileRegex.String())
 	} else {
-		pre = fmt.Sprintf("Regex %q did match. ", arguments.Regex.String())
+		pre = fmt.Sprintf("Regex %q did match. ", arguments.WhileRegex.String())
 	}
 
 	d := time.Since(arguments.ProgrammStartTime)
@@ -204,7 +204,7 @@ func RunCheckAllConditions(ctx context.Context, config *restclient.Config, args 
 	fmt.Printf("Checked %d conditions of %d resources of %d types. Duration: %s%s\n",
 		counter.CheckedConditions, counter.CheckedResources, counter.CheckedResourceTypes, time.Since(counter.StartTime).Round(time.Millisecond), name)
 
-	if args.Regex == nil {
+	if args.WhileRegex == nil {
 		// "all" command
 		if len(counter.Lines) > 0 {
 			return true, nil
@@ -396,16 +396,16 @@ func printConditions(args *Arguments, conditions []interface{}, counter *handleR
 			r.conditionReason, r.conditionMessage, duration)
 
 		addLine := true
-		if args.Regex != nil {
+		if args.WhileRegex != nil {
 			if args.RegexIsWaitFor {
 				addLine = true
-				if !args.Regex.MatchString(outLine) {
+				if !args.WhileRegex.MatchString(outLine) {
 					again = false
 					addLine = false
 				}
 			} else {
 				addLine = false
-				if args.Regex.MatchString(outLine) {
+				if args.WhileRegex.MatchString(outLine) {
 					again = true
 					addLine = true
 				}

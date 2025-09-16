@@ -25,7 +25,7 @@ var whileCmd = &cobra.Command{
 			fmt.Println(err)
 			os.Exit(3)
 		}
-		arguments.Regex = r
+		arguments.WhileRegex = r
 
 		err = checkconditions.RunWhileRegex(context.Background(), &arguments)
 		if err != nil {
