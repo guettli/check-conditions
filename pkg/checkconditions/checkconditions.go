@@ -33,7 +33,7 @@ type Arguments struct {
 	Timeout           time.Duration
 	dynClient         dynamic.Interface
 	dicoveryClient    discovery.DiscoveryInterface
-	stdOut            io.Writer
+	Stdout            io.Writer
 }
 
 func (a *Arguments) InitClients(ctx context.Context) error {
@@ -120,7 +120,7 @@ func RunForever(ctx context.Context, args *Arguments) error {
 			return err
 		}
 		time.Sleep(args.Sleep)
-		fmt.Printf("\n%s\n", time.Now().Format("2006-01-02 15:04:05 -0700 MST"))
+		fmt.Fprintf(args.Stdout, "\n%s\n", time.Now().Format("2006-01-02 15:04:05 -0700 MST"))
 	}
 }
 
@@ -137,29 +137,29 @@ func RunWhileRegex(ctx context.Context, arguments *Arguments) error {
 }
 
 // return true if the while-regex matched
-func runWhileInner(ctx context.Context, arguments *Arguments) (bool, error) {
-	unhealthy, err := RunAllOnce(ctx, arguments)
+func runWhileInner(ctx context.Context, args *Arguments) (bool, error) {
+	unhealthy, err := RunAllOnce(ctx, args)
 	if err != nil {
 		return false, err
 	}
 	if !unhealthy {
-		fmt.Printf("Regex %q did not match. Stopping\n", arguments.WhileRegex.String())
+		fmt.Fprintf(args.Stdout, "Regex %q did not match. Stopping\n", args.WhileRegex.String())
 		return false, nil
 	}
-	pre := fmt.Sprintf("Regex %q did match. ", arguments.WhileRegex.String())
+	pre := fmt.Sprintf("Regex %q did match. ", args.WhileRegex.String())
 
-	d := time.Since(arguments.ProgrammStartTime)
+	d := time.Since(args.ProgrammStartTime)
 	durationStr := d.Round(time.Second).String()
-	if arguments.Timeout > 0 {
-		untilTimeout := arguments.Timeout - d
+	if args.Timeout > 0 {
+		untilTimeout := args.Timeout - d
 		durationStr += ", timeout in " + untilTimeout.Round(time.Second).String()
 	}
-	fmt.Printf("%sWaiting %s, then checking again. %s (%s).\n\n",
+	fmt.Fprintf(args.Stdout, "%sWaiting %s, then checking again. %s (%s).\n\n",
 		pre,
-		arguments.Sleep.String(),
+		args.Sleep.String(),
 		time.Now().Format("2006-01-02 15:04:05 -0700 MST"),
 		durationStr)
-	time.Sleep(time.Duration(arguments.Sleep))
+	time.Sleep(time.Duration(args.Sleep))
 	return true, nil
 }
 
@@ -190,14 +190,14 @@ func RunCheckAllConditions(ctx context.Context, args *Arguments) (bool, error) {
 		}
 		if args.RetryForEver {
 			if i%10 == 0 {
-				fmt.Printf("a network error occured. Will retry forever: %v\n",
+				fmt.Fprintf(args.Stdout, "a network error occured. Will retry forever: %v\n",
 					err)
 			}
 		} else {
 			if i > args.RetryCount {
 				return false, fmt.Errorf("network error: %w", err)
 			}
-			fmt.Printf("a network error occured. Will retry %d times: %v\n",
+			fmt.Fprintf(args.Stdout, "a network error occured. Will retry %d times: %v\n",
 				args.RetryCount-i, err)
 		}
 		time.Sleep(1 * time.Second)
@@ -212,7 +212,7 @@ func RunCheckAllConditions(ctx context.Context, args *Arguments) (bool, error) {
 	if name != "" {
 		name = " (" + name + ")"
 	}
-	fmt.Printf("Checked %d conditions of %d resources of %d types. Duration: %s%s\n",
+	fmt.Fprintf(args.Stdout, "Checked %d conditions of %d resources of %d types. Duration: %s%s\n",
 		counter.CheckedConditions, counter.CheckedResources, counter.CheckedResourceTypes, time.Since(counter.StartTime).Round(time.Millisecond), name)
 
 	if args.WhileRegex == nil {
@@ -232,8 +232,8 @@ func RunAndGetCounter(ctx context.Context, args *Arguments) (Counter, error) {
 	serverResources, err := args.dicoveryClient.ServerPreferredResources()
 	if err != nil {
 		if discovery.IsGroupDiscoveryFailedError(err) {
-			fmt.Printf("WARNING: The Kubernetes server has an orphaned API service. Server reports: %s\n", err.Error())
-			fmt.Printf("WARNING: To fix this, kubectl delete apiservice <service-name>\n")
+			fmt.Fprintf(args.Stdout, "WARNING: The Kubernetes server has an orphaned API service. Server reports: %s\n", err.Error())
+			fmt.Fprintf(args.Stdout, "WARNING: To fix this, kubectl delete apiservice <service-name>\n")
 		} else {
 			return counter, fmt.Errorf("error getting server preferred resources: %w", err)
 		}
@@ -335,7 +335,7 @@ func printResources(args *Arguments, list *unstructured.UnstructuredList, gvr sc
 		lines = append(lines, subLines...)
 	}
 	if args.Verbose {
-		fmt.Printf("    checked %s %s %s workerID=%d\n", gvr.Resource, gvr.Group, gvr.Version, workerID)
+		fmt.Fprintf(args.Stdout, "    checked %s %s %s workerID=%d\n", gvr.Resource, gvr.Group, gvr.Version, workerID)
 	}
 	return lines, again
 }
@@ -665,7 +665,7 @@ func handleResourceType(ctx context.Context, input handleResourceTypeInput) hand
 
 	list, err := dynClient.Resource(gvr).List(ctx, metav1.ListOptions{})
 	if err != nil {
-		fmt.Printf("..Error listing %s: %v. group %q version %q resource %q\n", name, err,
+		fmt.Fprintf(args.Stdout, "..Error listing %s: %v. group %q version %q resource %q\n", name, err,
 			gvr.Group, gvr.Version, gvr.Resource)
 		return output
 	}

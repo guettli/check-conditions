@@ -1,8 +1,10 @@
 package checkconditions
 
 import (
+	"bytes"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -54,5 +56,8 @@ func TestRunWhileRegex(t *testing.T) {
 	}, deploy)
 
 	args.dicoveryClient = discoveryClient
+	buf := bytes.Buffer{}
+	args.Stdout = &buf
 	RunCheckAllConditions(ctx, args)
+	require.Equal(t, "Checked 0 conditions of 0 resources of 0 types. Duration: 0s\n", buf.String())
 }

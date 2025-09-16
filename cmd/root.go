@@ -33,7 +33,9 @@ func Execute() {
 	}
 }
 
-var arguments = checkconditions.Arguments{}
+var arguments = checkconditions.Arguments{
+	Stdout: os.Stdout,
+}
 
 func init() {
 	arguments.ProgrammStartTime = time.Now()
