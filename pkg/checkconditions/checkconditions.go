@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"regexp"
@@ -18,7 +19,6 @@ import (
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
-	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 )
 
@@ -31,6 +31,50 @@ type Arguments struct {
 	RetryCount        int16
 	RetryForEver      bool
 	Timeout           time.Duration
+	dynClient         dynamic.Interface
+	dicoveryClient    discovery.DiscoveryInterface
+	stdOut            io.Writer
+}
+
+func (a *Arguments) InitClients(ctx context.Context) error {
+	if a.dynClient != nil {
+		return errors.New("dynClient already set")
+	}
+
+	if a.dicoveryClient != nil {
+		return errors.New("discoveryClient already set")
+	}
+
+	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
+	configOverrides := &clientcmd.ConfigOverrides{}
+	kubeconfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, configOverrides)
+
+	config, err := kubeconfig.ClientConfig()
+	if err != nil {
+		return fmt.Errorf("error creating client config: %w", err)
+	}
+
+	// 80 concurrent requests were served in roughly 200ms
+	// This means 400 requests in one second (to local kind cluster)
+	// But why reduce this? I don't want people with better hardware
+	// to wait for getting results from an api-server running at localhost
+	config.QPS = 1000
+	config.Burst = 1000
+
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		return fmt.Errorf("error creating clientset: %w", err)
+	}
+
+	dynClient, err := dynamic.NewForConfig(config)
+	if err != nil {
+		return fmt.Errorf("error creating dynamic client: %w", err)
+	}
+	a.dynClient = dynClient
+
+	dClient := clientset.Discovery()
+	a.dicoveryClient = dClient
+	return nil
 }
 
 var resourcesToSkip = []string{
@@ -66,22 +110,7 @@ func (c *Counter) add(o handleResourceTypeOutput) {
 
 // RunAllOnce returns true if an unhealthy condition was found.
 func RunAllOnce(ctx context.Context, args *Arguments) (bool, error) {
-	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
-	configOverrides := &clientcmd.ConfigOverrides{}
-	kubeconfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, configOverrides)
-
-	config, err := kubeconfig.ClientConfig()
-	if err != nil {
-		return false, fmt.Errorf("error creating client config: %w", err)
-	}
-
-	// 80 concurrent requests were served in roughly 200ms
-	// This means 400 requests in one second (to local kind cluster)
-	// But why reduce this? I don't want people with better hardware
-	// to wait for getting results from an api-server running at localhost
-	config.QPS = 1000
-	config.Burst = 1000
-	return RunCheckAllConditions(ctx, config, args)
+	return RunCheckAllConditions(ctx, args)
 }
 
 func RunForever(ctx context.Context, args *Arguments) error {
@@ -136,7 +165,7 @@ func runWhileInner(ctx context.Context, arguments *Arguments) (bool, error) {
 
 // If arguments.WhileRegex, then return true if there was a matching unhealthy condition.
 // Otherwise return true if there was at least one unhealthy condition.
-func RunCheckAllConditions(ctx context.Context, config *restclient.Config, args *Arguments) (bool, error) {
+func RunCheckAllConditions(ctx context.Context, args *Arguments) (bool, error) {
 	// Get the list of all API resources available
 	var err error
 	var counter Counter
@@ -149,7 +178,7 @@ func RunCheckAllConditions(ctx context.Context, config *restclient.Config, args 
 				return false, fmt.Errorf("timeout reached after %s", d.String())
 			}
 		}
-		counter, err = RunAndGetCounter(ctx, config, args)
+		counter, err = RunAndGetCounter(ctx, args)
 		if err == nil {
 			// Successful connection, from now on retry forever.
 			args.RetryForEver = true
@@ -197,21 +226,10 @@ func RunCheckAllConditions(ctx context.Context, config *restclient.Config, args 
 	return counter.WhileRegexDidMatch, nil
 }
 
-func RunAndGetCounter(ctx context.Context, config *restclient.Config, args *Arguments) (Counter, error) {
+func RunAndGetCounter(ctx context.Context, args *Arguments) (Counter, error) {
 	counter := Counter{StartTime: time.Now()}
-	clientset, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		return counter, fmt.Errorf("error creating clientset: %w", err)
-	}
 
-	dynClient, err := dynamic.NewForConfig(config)
-	if err != nil {
-		return counter, fmt.Errorf("error creating dynamic client: %w", err)
-	}
-
-	discoveryClient := clientset.Discovery()
-
-	serverResources, err := discoveryClient.ServerPreferredResources()
+	serverResources, err := args.dicoveryClient.ServerPreferredResources()
 	if err != nil {
 		if discovery.IsGroupDiscoveryFailedError(err) {
 			fmt.Printf("WARNING: The Kubernetes server has an orphaned API service. Server reports: %s\n", err.Error())
@@ -240,7 +258,7 @@ func RunAndGetCounter(ctx context.Context, config *restclient.Config, args *Argu
 		wgCounter.Done()
 	}()
 
-	createJobs(serverResources, jobs, args, dynClient)
+	createJobs(serverResources, jobs, args)
 
 	close(jobs)
 	wg.Wait()
@@ -250,7 +268,7 @@ func RunAndGetCounter(ctx context.Context, config *restclient.Config, args *Argu
 	return counter, nil
 }
 
-func createJobs(serverResources []*metav1.APIResourceList, jobs chan handleResourceTypeInput, args *Arguments, dynClient *dynamic.DynamicClient) {
+func createJobs(serverResources []*metav1.APIResourceList, jobs chan handleResourceTypeInput, args *Arguments) {
 	for _, resourceList := range serverResources {
 		groupVersion, err := schema.ParseGroupVersion(resourceList.GroupVersion)
 		if err != nil {
@@ -259,8 +277,7 @@ func createJobs(serverResources []*metav1.APIResourceList, jobs chan handleResou
 		}
 		for i := range resourceList.APIResources {
 			jobs <- handleResourceTypeInput{
-				args:      args,
-				dynClient: dynClient,
+				args: args,
 				gvr: schema.GroupVersionResource{
 					Group:    groupVersion.Group,
 					Version:  groupVersion.Version,
@@ -616,10 +633,9 @@ func conditionTypeHasNegativeMeaning(resource string, ct string) bool {
 }
 
 type handleResourceTypeInput struct {
-	args      *Arguments
-	dynClient *dynamic.DynamicClient
-	gvr       schema.GroupVersionResource
-	workerID  int32
+	args     *Arguments
+	gvr      schema.GroupVersionResource
+	workerID int32
 }
 
 type handleResourceTypeOutput struct {
@@ -635,7 +651,7 @@ func handleResourceType(ctx context.Context, input handleResourceTypeInput) hand
 
 	args := input.args
 	name := input.gvr.Resource
-	dynClient := input.dynClient
+	dynClient := input.args.dynClient
 	gvr := input.gvr
 	// Skip subresources like pod/logs, pod/status
 	if containsSlash(name) {

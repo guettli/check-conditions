@@ -26,8 +26,13 @@ var whileCmd = &cobra.Command{
 			os.Exit(3)
 		}
 		arguments.WhileRegex = r
-
-		err = checkconditions.RunWhileRegex(context.Background(), &arguments)
+		ctx := context.Background()
+		err = arguments.InitClients(ctx)
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(3)
+		}
+		err = checkconditions.RunWhileRegex(ctx, &arguments)
 		if err != nil {
 			fmt.Println(err)
 			os.Exit(3)
