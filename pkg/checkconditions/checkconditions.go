@@ -564,6 +564,11 @@ func conditionTypeHasPositiveMeaning(resource string, ct string) bool {
 		"UpToDate",
 		"Valid",
 		"SuccessCriteriaMet",
+		"RunningDesiredVersion", // elasticsearches
+		"ready",                 // perconaservermongodbs
+		"sharding",              // perconaservermongodbs
+		"NoWarnings",            // rabbitmqclusters
+		"ReconcileSuccess",      // rabbitmqclusters
 	} {
 		if strings.HasSuffix(ct, suffix) {
 			return true
