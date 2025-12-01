@@ -527,6 +527,9 @@ var conditionLinesToIgnoreRegexs = []*regexp.Regexp{
 	regexp.MustCompile(`volumes TooManySnapshots=False`),
 	regexp.MustCompile(`volumes Scheduled=True`),
 	regexp.MustCompile(`volumes Restore=False`),
+
+	// perconaxtradbclusters
+	regexp.MustCompile(`perconaxtradbclusters tls=enabled`),
 }
 
 func conditionTypeHasPositiveMeaning(resource string, ct string) bool {
