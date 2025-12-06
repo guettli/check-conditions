@@ -590,6 +590,9 @@ func conditionTypeHasPositiveMeaning(resource string, ct string) bool {
 func conditionDone(conditionType string, conditionStatus string, conditionReason string) bool {
 	// machinesets demo-1-md-0-q9qzp-6gsw9 Condition MachinesReady=False Deleted @ Machine/demo-1-md-0-q9qzp-6gsw9-vkxrp ""
 	// The reason contains "@ ...". We need to split that
+	if ("No"+conditionType == conditionReason) || ("Not"+conditionType == conditionReason) {
+		return true
+	}
 	if conditionType == "MachinesReady" {
 		parts := strings.Split(conditionReason, "@")
 		conditionType = strings.TrimSpace(parts[0])
