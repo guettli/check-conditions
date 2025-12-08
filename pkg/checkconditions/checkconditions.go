@@ -319,9 +319,7 @@ func printResources(args *Arguments, list *unstructured.UnstructuredList, gvr sc
 		}
 		lines = append(lines, subLines...)
 	}
-	if args.Verbose {
-		fmt.Printf("    checked %s %s %s workerID=%d\n", gvr.Resource, gvr.Group, gvr.Version, workerID)
-	}
+
 	return lines, again
 }
 
@@ -445,20 +443,23 @@ func handleCondition(args *Arguments, condition interface{}, counter *handleReso
 	conditionMessage, _ := conditionMap["message"].(string)
 	resource := gvr.Resource
 	group := gvr.Group
-	configSkip := false
+
+	configSkip := false // new way
 	if skipConditionViaConfig(args.Config, group, resource, conditionType, conditionStatus,
 		conditionReason, conditionMessage) {
 		configSkip = true
 	}
+
 	if skipConditionLegacy(group, resource, conditionType, conditionStatus,
 		conditionReason, conditionMessage) {
 		if !configSkip {
-			if args.AutoAddFromLegacyConfig && args.Config != nil {
+			// new way would not skip this condition
+			if args.AutoAddFromLegacyConfig {
 				added, err := args.Config.addLegacyIgnore(group, resource, conditionType, conditionStatus,
 					conditionReason, conditionMessage)
-				if err != nil && args.Verbose {
+				if err != nil {
 					fmt.Printf("auto-add config failed: %v\n", err)
-				} else if added && args.Verbose {
+				} else if added {
 					fmt.Printf("auto-added config entry for %s %s %s=%s\n",
 						group, resource, conditionType, conditionStatus)
 				}
@@ -472,6 +473,7 @@ func handleCondition(args *Arguments, condition interface{}, counter *handleReso
 		return rows
 	}
 	if configSkip && args.Verbose {
+		// new way would skip this condition
 		fmt.Printf("todo: config would ignore this: %s %s %s %s %s %s\n",
 			group, resource, conditionType, conditionStatus,
 			conditionReason, conditionMessage)

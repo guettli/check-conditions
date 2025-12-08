@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"errors"
+	"fmt"
 	"os"
 	"time"
 
@@ -21,20 +23,30 @@ Output is usualy:
 		if arguments.RetryCount == 0 {
 			arguments.RetryForEver = true
 		}
-		path, err := checkconditions.ConfigPath()
+
+		cfg, path, err := checkconditions.LoadConfig()
 		if err != nil {
+			if errors.Is(err, checkconditions.ErrInvalidConfigYAML) {
+				cmd.SilenceUsage = true
+			}
 			return err
 		}
-		cfg, err := checkconditions.LoadConfig()
-		if err != nil {
-			return err
+
+		if arguments.AutoAddFromLegacyConfig && path == "" {
+			return fmt.Errorf("auto-add requested but no config file found")
 		}
-		if cfg == nil && arguments.AutoAddFromLegacyConfig {
+
+		if cfg == nil && arguments.AutoAddFromLegacyConfig && path != "" {
 			cfg = &checkconditions.Config{}
-		}
-		if cfg != nil {
+			cfg.SetPath(path)
+		} else if cfg != nil && path != "" {
 			cfg.SetPath(path)
 		}
+
+		if arguments.Verbose && cfg != nil && path != "" {
+			fmt.Printf("Loaded config from %s\n", path)
+		}
+
 		arguments.Config = cfg
 		return nil
 	},

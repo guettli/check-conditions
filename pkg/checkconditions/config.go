@@ -8,24 +8,43 @@ import (
 	"regexp"
 	"strings"
 
+	yamlv2 "gopkg.in/yaml.v2"
 	"sigs.k8s.io/yaml"
 )
 
 const defaultConfigRelPath = ".config/check-conditions/check-conditions.yaml"
 
-// ConfigPath returns the path to the default config file in the user's home.
+var ErrInvalidConfigYAML = errors.New("invalid config yaml")
+
+// ConfigPath walks upwards from the working directory looking for the config file.
+// It stops when it reaches / or /home without checking those directories.
 func ConfigPath() (string, error) {
-	home, err := os.UserHomeDir()
+	dir, err := os.Getwd()
 	if err != nil {
-		return "", fmt.Errorf("unable to find home directory: %w", err)
+		return "", fmt.Errorf("unable to determine working directory: %w", err)
 	}
-	return filepath.Join(home, defaultConfigRelPath), nil
+	for {
+		candidate := filepath.Join(dir, defaultConfigRelPath)
+		info, err := os.Stat(candidate)
+		if err == nil && !info.IsDir() {
+			return candidate, nil
+		}
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			return "", fmt.Errorf("checking config at %s: %w", candidate, err)
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir || parent == "/" || parent == filepath.Join("/", "home") {
+			break
+		}
+		dir = parent
+	}
+	return "", nil
 }
 
 // Config holds the user provided resource-level overrides that should be applied
 // when checking conditions.
 type Config struct {
-	Resources []ResourceConfig `yaml:"resources"`
+	Resources []ResourceConfig `yaml:"resources" json:"resources"`
 
 	groupTree map[string]*groupNode
 	path      string
@@ -33,17 +52,39 @@ type Config struct {
 
 // ResourceConfig describes how a single resource (group + name) should be treated.
 type ResourceConfig struct {
-	Group  string             `yaml:"group"`
-	Name   string             `yaml:"name"`
-	Ignore []ConditionMatcher `yaml:"ignore"`
+	ResourceGroup string             `yaml:"resourceGroup,omitempty" json:"resourceGroup,omitempty"`
+	Name          string             `yaml:"name" json:"name"`
+	Skip          []ConditionMatcher `yaml:"skip" json:"skip"`
+}
+
+func (r *ResourceConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	type raw struct {
+		ResourceGroup string             `yaml:"resourceGroup"`
+		Group         string             `yaml:"group"`
+		Name          string             `yaml:"name"`
+		Skip          []ConditionMatcher `yaml:"skip"`
+		Ignore        []ConditionMatcher `yaml:"ignore"`
+	}
+	var rr raw
+	if err := unmarshal(&rr); err != nil {
+		return err
+	}
+	r.Name = rr.Name
+	if rr.ResourceGroup != "" {
+		r.ResourceGroup = rr.ResourceGroup
+	} else {
+		r.ResourceGroup = rr.Group
+	}
+	r.Skip = append(rr.Skip, rr.Ignore...)
+	return nil
 }
 
 // ConditionMatcher filters conditions by type/status/reason/message.
 type ConditionMatcher struct {
-	Type    string `yaml:"type"`
-	Status  string `yaml:"status"`
-	Reason  string `yaml:"reason"`
-	Message string `yaml:"message"`
+	Type    string `yaml:"type" json:"type"`
+	Status  string `yaml:"status" json:"status"`
+	Reason  string `yaml:"reason" json:"reason"`
+	Message string `yaml:"message" json:"message"`
 }
 
 // AddRegex stores the provided tuple in the in-memory tree so skipConditionViaConfig
@@ -146,6 +187,14 @@ func wildcardOr(value string) string {
 		return "*"
 	}
 	return value
+}
+
+func canonicalGroup(group string) string {
+	g := strings.TrimSpace(group)
+	if strings.EqualFold(g, "core") {
+		return ""
+	}
+	return g
 }
 
 type groupNode struct {
@@ -259,7 +308,11 @@ func (c *Config) addLegacyIgnore(group, resource, cType, cStatus, cReason, cMess
 	if c.path == "" {
 		return false, errors.New("config path not set")
 	}
-	res := c.ensureResourceConfig(group, resource)
+	groupKey := group
+	if strings.TrimSpace(groupKey) == "" {
+		groupKey = "core"
+	}
+	res := c.ensureResourceConfig(groupKey, resource)
 	statusPattern := wildcardOr(cStatus)
 	entry := ConditionMatcher{
 		Type:   cType,
@@ -271,14 +324,14 @@ func (c *Config) addLegacyIgnore(group, resource, cType, cStatus, cReason, cMess
 	if cMessage != "" && cMessage != "*" {
 		entry.Message = cMessage
 	}
-	for _, existing := range res.Ignore {
+	for _, existing := range res.Skip {
 		if existing.Type == entry.Type && existing.Status == entry.Status &&
 			existing.Reason == entry.Reason && existing.Message == entry.Message {
 			return false, nil
 		}
 	}
-	res.Ignore = append(res.Ignore, entry)
-	if err := c.AddRegex(group, resource, cType, statusPattern, wildcardOr(cReason), wildcardOr(cMessage)); err != nil {
+	res.Skip = append(res.Skip, entry)
+	if err := c.AddRegex(groupKey, resource, cType, statusPattern, wildcardOr(cReason), wildcardOr(cMessage)); err != nil {
 		return false, err
 	}
 	if err := c.save(); err != nil {
@@ -289,43 +342,59 @@ func (c *Config) addLegacyIgnore(group, resource, cType, cStatus, cReason, cMess
 
 func (c *Config) ensureResourceConfig(group, resource string) *ResourceConfig {
 	for i := range c.Resources {
-		if c.Resources[i].Group == group && c.Resources[i].Name == resource {
+		if c.Resources[i].Name == resource {
+			if c.Resources[i].ResourceGroup == "" && group != "" {
+				c.Resources[i].ResourceGroup = group
+			}
+			return &c.Resources[i]
+		}
+		if c.Resources[i].ResourceGroup == group && c.Resources[i].Name == resource {
 			return &c.Resources[i]
 		}
 	}
 	c.Resources = append(c.Resources, ResourceConfig{
-		Group: group,
-		Name:  resource,
+		ResourceGroup: group,
+		Name:          resource,
 	})
 	return &c.Resources[len(c.Resources)-1]
 }
 
 func (c *Config) buildTree() error {
 	for _, resource := range c.Resources {
-		group := wildcardOr(resource.Group)
+		if strings.TrimSpace(resource.ResourceGroup) == "" {
+			return fmt.Errorf("%w: resource %q missing group", ErrInvalidConfigYAML, resource.Name)
+		}
+		group := canonicalGroup(resource.ResourceGroup)
 		name := wildcardOr(resource.Name)
 
-		for _, matcher := range resource.Ignore {
+		for _, matcher := range resource.Skip {
 			if matcher.Type == "" {
-				return fmt.Errorf("resource %q ignore entry missing type", resource.Name)
+				return fmt.Errorf("%w: resource %q ignore entry missing type", ErrInvalidConfigYAML, resource.Name)
 			}
 			status := wildcardOr(matcher.Status)
 			if err := c.AddRegex(group, name, matcher.Type, status,
 				wildcardOr(matcher.Reason), wildcardOr(matcher.Message)); err != nil {
-				return err
+				return fmt.Errorf("%w: %w", ErrInvalidConfigYAML, err)
 			}
 		}
 	}
 	return nil
 }
 
-// LoadConfig reads the config from the default path (~/.config/check-conditions/check-conditions.yaml).
-func LoadConfig() (*Config, error) {
+// LoadConfig finds the config path and loads the file if it exists.
+func LoadConfig() (*Config, string, error) {
 	path, err := ConfigPath()
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
-	return LoadConfigFromPath(path)
+	if path == "" {
+		return nil, "", nil
+	}
+	cfg, err := LoadConfigFromPath(path)
+	if err != nil {
+		return nil, "", err
+	}
+	return cfg, path, nil
 }
 
 // LoadConfigFromPath reads and parses the config stored at the provided path. If the file
@@ -341,7 +410,7 @@ func LoadConfigFromPath(path string) (*Config, error) {
 
 	var cfg Config
 	if err := yaml.UnmarshalStrict(data, &cfg); err != nil {
-		return nil, fmt.Errorf("unable to parse config at %s: %w", path, err)
+		return nil, fmt.Errorf("%w: unable to parse config at %s: %w", ErrInvalidConfigYAML, path, err)
 	}
 	cfg.path = path
 	if err := cfg.buildTree(); err != nil {
@@ -362,7 +431,28 @@ func (c *Config) save() error {
 	if err := os.MkdirAll(filepath.Dir(c.path), 0o755); err != nil {
 		return err
 	}
-	data, err := yaml.Marshal(c)
+	var resourcesSlice []yamlv2.MapSlice
+	for _, resource := range c.Resources {
+		var ignoreSlice []yamlv2.MapSlice
+		for _, matcher := range resource.Skip {
+			ignoreSlice = append(ignoreSlice, yamlv2.MapSlice{
+				{Key: "type", Value: matcher.Type},
+				{Key: "status", Value: matcher.Status},
+				{Key: "reason", Value: matcher.Reason},
+			})
+		}
+		resourceItem := yamlv2.MapSlice{
+			{Key: "name", Value: resource.Name},
+		}
+		if resource.ResourceGroup != "" {
+			resourceItem = append(resourceItem, yamlv2.MapItem{Key: "resourceGroup", Value: resource.ResourceGroup})
+		}
+		resourceItem = append(resourceItem, yamlv2.MapItem{Key: "skip", Value: ignoreSlice})
+		resourcesSlice = append(resourcesSlice, resourceItem)
+	}
+	data, err := yamlv2.Marshal(yamlv2.MapSlice{
+		{Key: "resources", Value: resourcesSlice},
+	})
 	if err != nil {
 		return err
 	}
