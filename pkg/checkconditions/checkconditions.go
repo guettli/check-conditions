@@ -421,10 +421,7 @@ func skipConditionLegacy(group, resource, cType, cStatus, cReason, cMessage stri
 			return true
 		}
 	}
-	if conditionDone(cType, cStatus, cReason) {
-		return true
-	}
-	return false
+	return conditionDone(cType, cStatus, cReason)
 }
 
 // handleCondition returns extended rows, if the condition was not skipped. This means the condition
@@ -444,11 +441,8 @@ func handleCondition(args *Arguments, condition interface{}, counter *handleReso
 	resource := gvr.Resource
 	group := gvr.Group
 
-	configSkip := false // new way
-	if skipConditionViaConfig(args.Config, group, resource, conditionType, conditionStatus,
-		conditionReason, conditionMessage) {
-		configSkip = true
-	}
+	configSkip := skipConditionViaConfig(args.Config, group, resource, conditionType, conditionStatus,
+		conditionReason, conditionMessage)
 
 	if skipConditionLegacy(group, resource, conditionType, conditionStatus,
 		conditionReason, conditionMessage) {
