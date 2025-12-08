@@ -21,6 +21,21 @@ Output is usualy:
 		if arguments.RetryCount == 0 {
 			arguments.RetryForEver = true
 		}
+		path, err := checkconditions.ConfigPath()
+		if err != nil {
+			return err
+		}
+		cfg, err := checkconditions.LoadConfig()
+		if err != nil {
+			return err
+		}
+		if cfg == nil && arguments.AutoAddFromLegacyConfig {
+			cfg = &checkconditions.Config{}
+		}
+		if cfg != nil {
+			cfg.SetPath(path)
+		}
+		arguments.Config = cfg
 		return nil
 	},
 }
@@ -47,4 +62,6 @@ func init() {
 	rootCmd.PersistentFlags().StringVarP(&arguments.Name, "name", "", "", "A string which will be printed in the output. Usefull if you have several terminals running the 'while' sub-command.")
 
 	rootCmd.PersistentFlags().Int16VarP(&arguments.RetryCount, "retry-count", "", 5, "Network errors: How many times to retry the command before giving up. This applies only to the first connection. As soon as a successful connection is made, the command will retry forever. Set to zero to also retry the first connection forever.")
+
+	rootCmd.PersistentFlags().BoolVar(&arguments.AutoAddFromLegacyConfig, "auto-add-from-legacy-config", false, "Automatically append entries that the legacy logic would ignore.")
 }

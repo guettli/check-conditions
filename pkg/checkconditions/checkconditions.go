@@ -23,14 +23,16 @@ import (
 )
 
 type Arguments struct {
-	Verbose           bool
-	Sleep             time.Duration
-	WhileRegex        *regexp.Regexp
-	ProgrammStartTime time.Time
-	Name              string
-	RetryCount        int16
-	RetryForEver      bool
-	Timeout           time.Duration
+	Verbose                 bool
+	Sleep                   time.Duration
+	WhileRegex              *regexp.Regexp
+	ProgrammStartTime       time.Time
+	Name                    string
+	RetryCount              int16
+	RetryForEver            bool
+	Timeout                 time.Duration
+	AutoAddFromLegacyConfig bool
+	Config                  *Config
 }
 
 var resourcesToSkip = []string{
@@ -339,7 +341,7 @@ func printConditions(args *Arguments, conditions []interface{}, counter *handleR
 ) (lines []string, again bool) {
 	var rows []conditionRow
 	for _, condition := range conditions {
-		rows = handleCondition(condition, counter, gvr, rows)
+		rows = handleCondition(args, condition, counter, gvr, rows)
 	}
 	// remove general ready condition, if it is already contained in a particular condition
 	// https://pkg.go.dev/sigs.k8s.io/cluster-api/util/conditions#SetSummary
@@ -393,7 +395,43 @@ func printConditions(args *Arguments, conditions []interface{}, counter *handleR
 	return lines, again
 }
 
-func handleCondition(condition interface{}, counter *handleResourceTypeOutput, gvr schema.GroupVersionResource, rows []conditionRow) []conditionRow {
+// skipConditionViaConfig returns true, when this condition should be ignored.
+func skipConditionViaConfig(cfg *Config, group, resource, cType, cStatus, cReason, cMessage string) bool {
+	return cfg != nil && cfg.shouldSkip(group, resource, cType, cStatus, cReason, cMessage)
+}
+
+// skipConditionLegacy returns true, when this condition should be ignored. This is the pre config
+// function. This should be removed in the long run.
+func skipConditionLegacy(group, resource, cType, cStatus, cReason, cMessage string) bool {
+	// legacy code. Should be removed later, when config works
+	if conditionToSkip(cType) {
+		return true
+	}
+	switch cStatus {
+	case "True":
+		if conditionTypeHasPositiveMeaning(resource, cType) {
+			return true
+		}
+	case "False":
+		if conditionTypeHasNegativeMeaning(resource, cType) {
+			return true
+		}
+	}
+	conditionLine := fmt.Sprintf("%s %s=%s %s %q", resource, cType, cStatus, cReason, cMessage)
+	for _, r := range conditionLinesToIgnoreRegexs {
+		if r.MatchString(conditionLine) {
+			return true
+		}
+	}
+	if conditionDone(cType, cStatus, cReason) {
+		return true
+	}
+	return false
+}
+
+// handleCondition returns extended rows, if the condition was not skipped. This means the condition
+// looks unhealthy
+func handleCondition(args *Arguments, condition interface{}, counter *handleResourceTypeOutput, gvr schema.GroupVersionResource, rows []conditionRow) []conditionRow {
 	conditionMap, ok := condition.(map[string]interface{})
 	if !ok {
 		fmt.Println("Invalid condition format")
@@ -403,29 +441,40 @@ func handleCondition(condition interface{}, counter *handleResourceTypeOutput, g
 
 	conditionType, _ := conditionMap["type"].(string)
 	conditionStatus, _ := conditionMap["status"].(string)
-	if conditionToSkip(conditionType) {
-		return rows
-	}
-	switch conditionStatus {
-	case "True":
-		if conditionTypeHasPositiveMeaning(gvr.Resource, conditionType) {
-			return rows
-		}
-	case "False":
-		if conditionTypeHasNegativeMeaning(gvr.Resource, conditionType) {
-			return rows
-		}
-	}
 	conditionReason, _ := conditionMap["reason"].(string)
 	conditionMessage, _ := conditionMap["message"].(string)
-	conditionLine := fmt.Sprintf("%s %s=%s %s %q", gvr.Resource, conditionType, conditionStatus, conditionReason, conditionMessage)
-	for _, r := range conditionLinesToIgnoreRegexs {
-		if r.MatchString(conditionLine) {
-			return rows
-		}
+	resource := gvr.Resource
+	group := gvr.Group
+	configSkip := false
+	if skipConditionViaConfig(args.Config, group, resource, conditionType, conditionStatus,
+		conditionReason, conditionMessage) {
+		configSkip = true
 	}
-	if conditionDone(conditionType, conditionStatus, conditionReason) {
+	if skipConditionLegacy(group, resource, conditionType, conditionStatus,
+		conditionReason, conditionMessage) {
+		if !configSkip {
+			if args.AutoAddFromLegacyConfig && args.Config != nil {
+				added, err := args.Config.addLegacyIgnore(group, resource, conditionType, conditionStatus,
+					conditionReason, conditionMessage)
+				if err != nil && args.Verbose {
+					fmt.Printf("auto-add config failed: %v\n", err)
+				} else if added && args.Verbose {
+					fmt.Printf("auto-added config entry for %s %s %s=%s\n",
+						group, resource, conditionType, conditionStatus)
+				}
+			}
+			if !args.AutoAddFromLegacyConfig && args.Verbose {
+				fmt.Printf("todo: config would not ignore this: %s %s %s %s %s %s\n",
+					group, resource, conditionType, conditionStatus,
+					conditionReason, conditionMessage)
+			}
+		}
 		return rows
+	}
+	if configSkip && args.Verbose {
+		fmt.Printf("todo: config would ignore this: %s %s %s %s %s %s\n",
+			group, resource, conditionType, conditionStatus,
+			conditionReason, conditionMessage)
 	}
 	s, _ := conditionMap["lastTransitionTime"].(string)
 	conditionLastTransitionTime := time.Time{}
@@ -550,7 +599,7 @@ var conditionTypesOfResourceWithNegativeMeaning = map[string][]string{
 var conditionLinesToIgnoreRegexs = []*regexp.Regexp{
 	// Cluster API
 	regexp.MustCompile("machinesets MachinesReady=False Deleted @.*"),
-	regexp.MustCompile("machinesets (MachinesReady|Ready)=False DrainingFailed @."),
+	regexp.MustCompile("machinesets (MachinesReady|Ready)=False DrainingFailed @.*"),
 	regexp.MustCompile("machinesets Ready=False Deleted @.*"),
 	regexp.MustCompile(`machinesets (MachinesReady|Ready)=False NodeNotFound.*`),
 	regexp.MustCompile(`machinedeployments (MachineSetReady|Ready)=False Deleted.*`),
