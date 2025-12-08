@@ -1,6 +1,8 @@
 package checkconditions
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -54,29 +56,26 @@ type Config struct {
 type ResourceConfig struct {
 	ResourceGroup string             `yaml:"resourceGroup,omitempty" json:"resourceGroup,omitempty"`
 	Name          string             `yaml:"name" json:"name"`
-	Skip          []ConditionMatcher `yaml:"skip" json:"skip"`
+	SkipIfTrue    []ConditionMatcher `yaml:"skipIfTrue,omitempty" json:"skipIfTrue,omitempty"`
+	SkipIfFalse   []ConditionMatcher `yaml:"skipIfFalse,omitempty" json:"skipIfFalse,omitempty"`
 }
 
 func (r *ResourceConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	type raw struct {
-		ResourceGroup string             `yaml:"resourceGroup"`
-		Group         string             `yaml:"group"`
-		Name          string             `yaml:"name"`
-		Skip          []ConditionMatcher `yaml:"skip"`
-		Ignore        []ConditionMatcher `yaml:"ignore"`
-	}
-	var rr raw
-	if err := unmarshal(&rr); err != nil {
+	var payload resourceConfigPayload
+	if err := unmarshal(&payload); err != nil {
 		return err
 	}
-	r.Name = rr.Name
-	if rr.ResourceGroup != "" {
-		r.ResourceGroup = rr.ResourceGroup
-	} else {
-		r.ResourceGroup = rr.Group
+	return r.decodePayload(&payload)
+}
+
+func (r *ResourceConfig) UnmarshalJSON(data []byte) error {
+	var payload resourceConfigPayload
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&payload); err != nil {
+		return err
 	}
-	r.Skip = append(rr.Skip, rr.Ignore...)
-	return nil
+	return r.decodePayload(&payload)
 }
 
 // ConditionMatcher filters conditions by type/status/reason/message.
@@ -85,6 +84,73 @@ type ConditionMatcher struct {
 	Status  string `yaml:"status" json:"status"`
 	Reason  string `yaml:"reason" json:"reason"`
 	Message string `yaml:"message" json:"message"`
+}
+
+type resourceConfigPayload struct {
+	ResourceGroup string             `json:"resourceGroup" yaml:"resourceGroup"`
+	Group         string             `json:"group" yaml:"group"`
+	Name          string             `json:"name" yaml:"name"`
+	SkipIfTrue    []ConditionMatcher `json:"skipIfTrue" yaml:"skipIfTrue"`
+	SkipIfFalse   []ConditionMatcher `json:"skipIfFalse" yaml:"skipIfFalse"`
+}
+
+func (r *ResourceConfig) decodePayload(payload *resourceConfigPayload) error {
+	r.Name = payload.Name
+	if payload.ResourceGroup != "" {
+		r.ResourceGroup = payload.ResourceGroup
+	} else {
+		r.ResourceGroup = payload.Group
+	}
+	if err := appendAndValidateMatchers(&r.SkipIfTrue, payload.SkipIfTrue, r.Name, "skipIfTrue"); err != nil {
+		return err
+	}
+	if err := appendAndValidateMatchers(&r.SkipIfFalse, payload.SkipIfFalse, r.Name, "skipIfFalse"); err != nil {
+		return err
+	}
+	return nil
+}
+
+func appendAndValidateMatchers(target *[]ConditionMatcher, matchers []ConditionMatcher, resourceName, field string) error {
+	for _, matcher := range matchers {
+		if strings.TrimSpace(matcher.Status) != "" {
+			return fmt.Errorf("%w: resource %q %s entry must not set status", ErrInvalidConfigYAML, resourceName, field)
+		}
+		*target = append(*target, matcher)
+	}
+	return nil
+}
+
+func matcherExists(matchers []ConditionMatcher, candidate ConditionMatcher) bool {
+	for _, matcher := range matchers {
+		if matcher.Type == candidate.Type &&
+			matcher.Reason == candidate.Reason &&
+			matcher.Message == candidate.Message {
+			return true
+		}
+	}
+	return false
+}
+
+type skipTarget uint8
+
+const (
+	skipTargetTrue skipTarget = 1 << iota
+	skipTargetFalse
+	skipTargetBoth = skipTargetTrue | skipTargetFalse
+)
+
+func determineSkipTarget(status string) skipTarget {
+	s := strings.TrimSpace(status)
+	if s == "" || s == "*" {
+		return skipTargetBoth
+	}
+	if strings.EqualFold(s, "true") {
+		return skipTargetTrue
+	}
+	if strings.EqualFold(s, "false") {
+		return skipTargetFalse
+	}
+	return skipTargetBoth
 }
 
 // AddRegex stores the provided tuple in the in-memory tree so skipConditionViaConfig
@@ -315,8 +381,7 @@ func (c *Config) addLegacyIgnore(group, resource, cType, cStatus, cReason, cMess
 	res := c.ensureResourceConfig(groupKey, resource)
 	statusPattern := wildcardOr(cStatus)
 	entry := ConditionMatcher{
-		Type:   cType,
-		Status: cStatus,
+		Type: cType,
 	}
 	if cReason != "" && cReason != "*" {
 		entry.Reason = cReason
@@ -324,13 +389,19 @@ func (c *Config) addLegacyIgnore(group, resource, cType, cStatus, cReason, cMess
 	if cMessage != "" && cMessage != "*" {
 		entry.Message = cMessage
 	}
-	for _, existing := range res.Skip {
-		if existing.Type == entry.Type && existing.Status == entry.Status &&
-			existing.Reason == entry.Reason && existing.Message == entry.Message {
-			return false, nil
-		}
+	target := determineSkipTarget(cStatus)
+	added := false
+	if (target == skipTargetTrue || target == skipTargetBoth) && !matcherExists(res.SkipIfTrue, entry) {
+		res.SkipIfTrue = append(res.SkipIfTrue, entry)
+		added = true
 	}
-	res.Skip = append(res.Skip, entry)
+	if (target == skipTargetFalse || target == skipTargetBoth) && !matcherExists(res.SkipIfFalse, entry) {
+		res.SkipIfFalse = append(res.SkipIfFalse, entry)
+		added = true
+	}
+	if !added {
+		return false, nil
+	}
 	if err := c.AddRegex(groupKey, resource, cType, statusPattern, wildcardOr(cReason), wildcardOr(cMessage)); err != nil {
 		return false, err
 	}
@@ -367,15 +438,28 @@ func (c *Config) buildTree() error {
 		group := canonicalGroup(resource.ResourceGroup)
 		name := wildcardOr(resource.Name)
 
-		for _, matcher := range resource.Skip {
-			if matcher.Type == "" {
-				return fmt.Errorf("%w: resource %q ignore entry missing type", ErrInvalidConfigYAML, resource.Name)
-			}
-			status := wildcardOr(matcher.Status)
-			if err := c.AddRegex(group, name, matcher.Type, status,
-				wildcardOr(matcher.Reason), wildcardOr(matcher.Message)); err != nil {
-				return fmt.Errorf("%w: %w", ErrInvalidConfigYAML, err)
-			}
+		if err := c.addMatchers(group, name, resource.SkipIfTrue, "True"); err != nil {
+			return err
+		}
+		if err := c.addMatchers(group, name, resource.SkipIfFalse, "False"); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (c *Config) addMatchers(group, name string, matchers []ConditionMatcher, defaultStatus string) error {
+	for _, matcher := range matchers {
+		if matcher.Type == "" {
+			return fmt.Errorf("%w: resource %q ignore entry missing type", ErrInvalidConfigYAML, name)
+		}
+		status := matcher.Status
+		if strings.TrimSpace(status) == "" {
+			status = defaultStatus
+		}
+		if err := c.AddRegex(group, name, matcher.Type, wildcardOr(status),
+			wildcardOr(matcher.Reason), wildcardOr(matcher.Message)); err != nil {
+			return fmt.Errorf("%w: %w", ErrInvalidConfigYAML, err)
 		}
 	}
 	return nil
@@ -433,21 +517,18 @@ func (c *Config) save() error {
 	}
 	var resourcesSlice []yamlv2.MapSlice
 	for _, resource := range c.Resources {
-		var ignoreSlice []yamlv2.MapSlice
-		for _, matcher := range resource.Skip {
-			ignoreSlice = append(ignoreSlice, yamlv2.MapSlice{
-				{Key: "type", Value: matcher.Type},
-				{Key: "status", Value: matcher.Status},
-				{Key: "reason", Value: matcher.Reason},
-			})
-		}
 		resourceItem := yamlv2.MapSlice{
 			{Key: "name", Value: resource.Name},
 		}
 		if resource.ResourceGroup != "" {
 			resourceItem = append(resourceItem, yamlv2.MapItem{Key: "resourceGroup", Value: resource.ResourceGroup})
 		}
-		resourceItem = append(resourceItem, yamlv2.MapItem{Key: "skip", Value: ignoreSlice})
+		if matchers := marshalMatchers(resource.SkipIfTrue); len(matchers) > 0 {
+			resourceItem = append(resourceItem, yamlv2.MapItem{Key: "skipIfTrue", Value: matchers})
+		}
+		if matchers := marshalMatchers(resource.SkipIfFalse); len(matchers) > 0 {
+			resourceItem = append(resourceItem, yamlv2.MapItem{Key: "skipIfFalse", Value: matchers})
+		}
 		resourcesSlice = append(resourcesSlice, resourceItem)
 	}
 	data, err := yamlv2.Marshal(yamlv2.MapSlice{
@@ -457,4 +538,18 @@ func (c *Config) save() error {
 		return err
 	}
 	return os.WriteFile(c.path, data, 0o600)
+}
+
+func marshalMatchers(matchers []ConditionMatcher) []yamlv2.MapSlice {
+	var result []yamlv2.MapSlice
+	for _, matcher := range matchers {
+		item := yamlv2.MapSlice{
+			{Key: "type", Value: matcher.Type},
+		}
+		if strings.TrimSpace(matcher.Reason) != "" {
+			item = append(item, yamlv2.MapItem{Key: "reason", Value: matcher.Reason})
+		}
+		result = append(result, item)
+	}
+	return result
 }

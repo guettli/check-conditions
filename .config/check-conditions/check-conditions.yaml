@@ -1,646 +1,452 @@
 resources:
 - name: apiservices
   resourceGroup: apiregistration.k8s.io
-  skip:
+  skipIfTrue:
   - type: Available
-    status: "True"
     reason: Local
   - type: Available
-    status: "True"
     reason: Passed
 - name: nodes
   resourceGroup: core
-  skip:
+  skipIfTrue:
+  - type: Ready
+    reason: KubeletReady
+  skipIfFalse:
   - type: NetworkUnavailable
-    status: "False"
     reason: CiliumIsUp
   - type: KubeletUnhealthy
-    status: "False"
     reason: KubeletIsHealthy
   - type: DisksFailure
-    status: "False"
     reason: DisksHealthy
   - type: FrequentContainerdRestart
-    status: "False"
     reason: NoFrequentContainerdRestart
   - type: KubeletNeedsRestart
-    status: "False"
     reason: KubeletIsHealthy
   - type: KernelDeadlock
-    status: "False"
     reason: KernelHasNoDeadlock
   - type: XfsShutdown
-    status: "False"
     reason: XfsHasNotShutDown
   - type: FrequentKubeletRestart
-    status: "False"
     reason: NoFrequentKubeletRestart
   - type: FrequentUnregisterNetDevice
-    status: "False"
     reason: NoFrequentUnregisterNetDevice
   - type: CperHardwareErrorFatal
-    status: "False"
     reason: CperHardwareHasNoFatalError
   - type: FrequentDockerRestart
-    status: "False"
     reason: NoFrequentDockerRestart
   - type: ContainerRuntimeUnhealthy
-    status: "False"
     reason: ContainerRuntimeIsHealthy
   - type: MemoryPressure
-    status: "False"
     reason: KubeletHasSufficientMemory
   - type: DiskPressure
-    status: "False"
     reason: KubeletHasNoDiskPressure
   - type: PIDPressure
-    status: "False"
     reason: KubeletHasSufficientPID
-  - type: Ready
-    status: "True"
-    reason: KubeletReady
 - name: pods
   resourceGroup: core
-  skip:
+  skipIfTrue:
   - type: PodReadyToStartContainers
-    status: "True"
-    reason: ""
   - type: Initialized
-    status: "True"
-    reason: ""
   - type: Ready
-    status: "True"
-    reason: ""
   - type: ContainersReady
-    status: "True"
-    reason: ""
   - type: PodScheduled
-    status: "True"
-    reason: ""
 - name: deployments
   resourceGroup: apps
-  skip:
+  skipIfTrue:
   - type: Progressing
-    status: "True"
     reason: NewReplicaSetAvailable
   - type: Available
-    status: "True"
     reason: MinimumReplicasAvailable
   - type: Progressing
-    status: "True"
     reason: NewReplicaSetAvailable
   - type: Progressing
-    status: "True"
     reason: NewReplicaSetAvailable
   - type: Progressing
-    status: "True"
     reason: NewReplicaSetAvailable
   - type: Progressing
-    status: "True"
     reason: NewReplicaSetAvailable
   - type: Progressing
-    status: "True"
     reason: NewReplicaSetAvailable
   - type: Progressing
-    status: "True"
     reason: NewReplicaSetAvailable
   - type: Progressing
-    status: "True"
     reason: NewReplicaSetAvailable
   - type: Progressing
-    status: "True"
     reason: NewReplicaSetAvailable
   - type: Progressing
-    status: "True"
     reason: NewReplicaSetAvailable
   - type: Progressing
-    status: "True"
     reason: NewReplicaSetAvailable
   - type: Progressing
-    status: "True"
     reason: NewReplicaSetAvailable
   - type: Progressing
-    status: "True"
     reason: NewReplicaSetAvailable
   - type: Progressing
-    status: "True"
     reason: NewReplicaSetAvailable
   - type: Progressing
-    status: "True"
     reason: NewReplicaSetAvailable
   - type: Progressing
-    status: "True"
     reason: NewReplicaSetAvailable
   - type: Progressing
-    status: "True"
     reason: NewReplicaSetAvailable
   - type: Progressing
-    status: "True"
     reason: NewReplicaSetAvailable
   - type: Progressing
-    status: "True"
     reason: NewReplicaSetAvailable
   - type: Progressing
-    status: "True"
     reason: NewReplicaSetAvailable
   - type: Progressing
-    status: "True"
     reason: NewReplicaSetAvailable
   - type: Progressing
-    status: "True"
     reason: NewReplicaSetAvailable
   - type: Progressing
-    status: "True"
     reason: NewReplicaSetAvailable
   - type: Progressing
-    status: "True"
     reason: NewReplicaSetAvailable
   - type: Progressing
-    status: "True"
     reason: NewReplicaSetAvailable
   - type: Progressing
-    status: "True"
     reason: NewReplicaSetAvailable
   - type: Progressing
-    status: "True"
     reason: NewReplicaSetAvailable
 - name: horizontalpodautoscalers
   resourceGroup: autoscaling
-  skip:
+  skipIfTrue:
   - type: AbleToScale
-    status: "True"
     reason: ReadyForNewScale
   - type: ScalingActive
-    status: "True"
     reason: ValidMetricFound
 - name: poddisruptionbudgets
   resourceGroup: policy
-  skip:
+  skipIfTrue:
   - type: DisruptionAllowed
-    status: "False"
-    reason: InsufficientPods
-  - type: DisruptionAllowed
-    status: "True"
     reason: SufficientPods
+  skipIfFalse:
+  - type: DisruptionAllowed
+    reason: InsufficientPods
 - name: flowschemas
   resourceGroup: flowcontrol.apiserver.k8s.io
-  skip:
+  skipIfFalse:
   - type: Dangling
-    status: "False"
     reason: Found
   - type: Dangling
-    status: "False"
     reason: Found
   - type: Dangling
-    status: "False"
     reason: Found
   - type: Dangling
-    status: "False"
     reason: Found
   - type: Dangling
-    status: "False"
     reason: Found
   - type: Dangling
-    status: "False"
     reason: Found
   - type: Dangling
-    status: "False"
     reason: Found
   - type: Dangling
-    status: "False"
     reason: Found
 - name: issuers
   resourceGroup: cert-manager.io
-  skip:
+  skipIfTrue:
   - type: Ready
-    status: "True"
     reason: IsReady
 - name: certificates
   resourceGroup: cert-manager.io
-  skip:
+  skipIfTrue:
   - type: Ready
-    status: "True"
     reason: Ready
 - name: kubeadmconfigs
   resourceGroup: bootstrap.cluster.x-k8s.io
-  skip:
+  skipIfTrue:
   - type: Ready
-    status: "True"
-    reason: ""
   - type: CertificatesAvailable
-    status: "True"
-    reason: ""
   - type: DataSecretAvailable
-    status: "True"
-    reason: ""
+  skipIfFalse:
+  - type: Paused
+    reason: NotPaused
 - name: ciliumclusterwidenetworkpolicies
   resourceGroup: cilium.io
-  skip:
+  skipIfTrue:
   - type: Valid
-    status: "True"
-    reason: ""
 - name: certificaterequests
   resourceGroup: cert-manager.io
-  skip:
+  skipIfTrue:
   - type: Approved
-    status: "True"
     reason: cert-manager.io
   - type: Ready
-    status: "True"
     reason: Issued
 - name: machinesets
   resourceGroup: cluster.x-k8s.io
-  skip:
+  skipIfTrue:
   - type: Ready
-    status: "True"
-    reason: ""
   - type: MachinesCreated
-    status: "True"
-    reason: ""
   - type: MachinesReady
-    status: "True"
-    reason: ""
   - type: Resized
-    status: "True"
-    reason: ""
+  - type: MachinesUpToDate
+    reason: UpToDate
+  skipIfFalse:
   - type: Ready
-    status: "False"
     reason: NodeNotFound @ Machine/databases-test-md-bm-q2gr4-xrw2j-h2mvg
   - type: MachinesReady
-    status: "False"
     reason: NodeNotFound @ Machine/databases-test-md-bm-q2gr4-xrw2j-h2mvg
   - type: Ready
-    status: "False"
     reason: Deleted @ Machine/observability-test-md-bm-q2h2t-r4zxp-kdhr6
   - type: MachinesReady
-    status: "False"
     reason: Deleted @ Machine/observability-test-md-bm-q2h2t-r4zxp-kdhr6
+  - type: Remediating
+    reason: NotRemediating
+  - type: ScalingDown
+    reason: NotScalingDown
+  - type: ScalingUp
+    reason: NotScalingUp
+  - type: Paused
+    reason: NotPaused
+  - type: Deleting
+    reason: NotDeleting
 - name: machinehealthchecks
   resourceGroup: cluster.x-k8s.io
-  skip:
+  skipIfTrue:
   - type: RemediationAllowed
-    status: "True"
-    reason: ""
+  skipIfFalse:
+  - type: Paused
+    reason: NotPaused
 - name: machinedeployments
   resourceGroup: cluster.x-k8s.io
-  skip:
+  skipIfTrue:
   - type: Ready
-    status: "True"
-    reason: ""
   - type: Available
-    status: "True"
-    reason: ""
   - type: MachineSetReady
-    status: "True"
-    reason: ""
+  - type: MachinesReady
+    reason: Ready
+  - type: MachinesUpToDate
+    reason: UpToDate
+  skipIfFalse:
+  - type: RollingOut
+    reason: NotRollingOut
+  - type: Remediating
+    reason: NotRemediating
+  - type: ScalingDown
+    reason: NotScalingDown
+  - type: ScalingUp
+    reason: NotScalingUp
+  - type: Paused
+    reason: NotPaused
+  - type: Deleting
+    reason: NotDeleting
 - name: clusters
   resourceGroup: cluster.x-k8s.io
-  skip:
+  skipIfTrue:
   - type: Ready
-    status: "True"
-    reason: ""
   - type: ControlPlaneInitialized
-    status: "True"
-    reason: ""
   - type: ControlPlaneReady
-    status: "True"
-    reason: ""
   - type: InfrastructureReady
-    status: "True"
-    reason: ""
   - type: TopologyReconciled
-    status: "True"
-    reason: ""
+  - type: ControlPlaneAvailable
+    reason: Available
+  - type: ControlPlaneMachinesReady
+    reason: Ready
+  - type: ControlPlaneMachinesUpToDate
+    reason: UpToDate
+  - type: WorkerMachinesUpToDate
+    reason: UpToDate
+  skipIfFalse:
+  - type: RollingOut
+    reason: NotRollingOut
+  - type: ScalingDown
+    reason: NotScalingDown
+  - type: ScalingUp
+    reason: NotScalingUp
+  - type: Paused
+    reason: NotPaused
+  - type: Deleting
+    reason: NotDeleting
 - name: clusteraddons
   resourceGroup: clusterstack.x-k8s.io
-  skip:
+  skipIfTrue:
   - type: Ready
-    status: "True"
-    reason: ""
   - type: ClusterAddonConfigValidated
-    status: "True"
-    reason: ""
   - type: ClusterAddonHelmChartUntarred
-    status: "True"
-    reason: ""
   - type: ClusterReady
-    status: "True"
-    reason: ""
   - type: ClusterStackReleaseDownloaded
-    status: "True"
-    reason: ""
   - type: HelmChartApplied
-    status: "True"
-    reason: ""
   - type: HookServerReady
-    status: "True"
-    reason: ""
   - type: KubeconfigsReady
-    status: "True"
-    reason: ""
 - name: clusterstacks
   resourceGroup: clusterstack.x-k8s.io
-  skip:
+  skipIfTrue:
   - type: Ready
-    status: "True"
-    reason: ""
   - type: ClusterStackReleaseAvailable
-    status: "True"
-    reason: ""
   - type: ClusterStackReleasesSynced
-    status: "True"
-    reason: ""
   - type: ProviderClusterStackReleasesSynced
-    status: "True"
-    reason: ""
   - type: AssetsClientAPIAvailable
-    status: "True"
-    reason: ""
   - type: ReleasesSynced
-    status: "True"
-    reason: ""
 - name: machines
   resourceGroup: cluster.x-k8s.io
-  skip:
+  skipIfTrue:
   - type: Ready
-    status: "True"
-    reason: ""
   - type: BootstrapReady
-    status: "True"
-    reason: ""
   - type: InfrastructureReady
-    status: "True"
-    reason: ""
   - type: NodeHealthy
-    status: "True"
-    reason: ""
   - type: APIServerPodHealthy
-    status: "True"
-    reason: ""
   - type: ControllerManagerPodHealthy
-    status: "True"
-    reason: ""
   - type: EtcdMemberHealthy
-    status: "True"
-    reason: ""
   - type: EtcdPodHealthy
-    status: "True"
-    reason: ""
   - type: SchedulerPodHealthy
-    status: "True"
-    reason: ""
+  - type: Available
+    reason: Available
+  - type: UpToDate
+    reason: UpToDate
+  - type: BootstrapConfigReady
+    reason: Ready
+  - type: NodeReady
+    reason: NodeReady
+  skipIfFalse:
+  - type: Paused
+    reason: NotPaused
+  - type: Deleting
+    reason: NotDeleting
 - name: clusterstackreleases
   resourceGroup: clusterstack.x-k8s.io
-  skip:
+  skipIfTrue:
   - type: Ready
-    status: "True"
-    reason: ""
   - type: AssetsClientAPIAvailable
-    status: "True"
-    reason: ""
   - type: ClusterStackReleaseDownloaded
-    status: "True"
-    reason: ""
   - type: HelmChartApplied
-    status: "True"
-    reason: ""
   - type: ProviderClusterStackReleaseReady
-    status: "True"
-    reason: ""
 - name: kubeadmcontrolplanes
   resourceGroup: controlplane.cluster.x-k8s.io
-  skip:
+  skipIfTrue:
   - type: Ready
-    status: "True"
-    reason: ""
   - type: Available
-    status: "True"
-    reason: ""
   - type: CertificatesAvailable
-    status: "True"
-    reason: ""
   - type: ControlPlaneComponentsHealthy
-    status: "True"
-    reason: ""
   - type: EtcdClusterHealthy
-    status: "True"
-    reason: ""
   - type: MachinesCreated
-    status: "True"
-    reason: ""
   - type: MachinesReady
-    status: "True"
-    reason: ""
   - type: Resized
-    status: "True"
-    reason: ""
+  - type: Initialized
+    reason: Initialized
+  - type: MachinesUpToDate
+    reason: UpToDate
+  skipIfFalse:
+  - type: RollingOut
+    reason: NotRollingOut
+  - type: ScalingDown
+    reason: NotScalingDown
+  - type: ScalingUp
+    reason: NotScalingUp
+  - type: Paused
+    reason: NotPaused
+  - type: Deleting
+    reason: NotDeleting
 - name: hcloudmachines
   resourceGroup: infrastructure.cluster.x-k8s.io
-  skip:
+  skipIfTrue:
   - type: Ready
-    status: "True"
-    reason: ""
   - type: BootstrapReady
-    status: "True"
-    reason: ""
   - type: HCloudTokenAvailable
-    status: "True"
-    reason: ""
   - type: ServerAvailable
-    status: "True"
-    reason: ""
   - type: ServerCreateSucceeded
-    status: "True"
-    reason: ""
+  skipIfFalse:
   - type: Ready
-    status: "False"
     reason: InstanceTerminated
 - name: hetznerbaremetalmachines
   resourceGroup: infrastructure.cluster.x-k8s.io
-  skip:
+  skipIfTrue:
   - type: Ready
-    status: "True"
-    reason: ""
   - type: BootstrapReady
-    status: "True"
-    reason: ""
   - type: HCloudTokenAvailable
-    status: "True"
-    reason: ""
   - type: HostAssociateSucceeded
-    status: "True"
-    reason: ""
   - type: HostReady
-    status: "True"
-    reason: ""
 - name: hetznerbaremetalhosts
   resourceGroup: infrastructure.cluster.x-k8s.io
-  skip:
+  skipIfTrue:
   - type: CredentialsAvailable
-    status: "True"
-    reason: ""
   - type: RootDeviceHintsValidated
-    status: "True"
-    reason: ""
   - type: Ready
-    status: "True"
-    reason: ""
   - type: ProvisionSucceeded
-    status: "True"
-    reason: ""
 - name: hetznerclusters
   resourceGroup: infrastructure.cluster.x-k8s.io
-  skip:
+  skipIfTrue:
   - type: Ready
-    status: "True"
-    reason: ""
   - type: ControlPlaneEndpointSet
-    status: "True"
-    reason: ""
   - type: HCloudTokenAvailable
-    status: "True"
-    reason: ""
   - type: LoadBalancerReady
-    status: "True"
-    reason: ""
   - type: PlacementGroupsSynced
-    status: "True"
-    reason: ""
   - type: TargetClusterReady
-    status: "True"
-    reason: ""
   - type: TargetClusterSecretReady
-    status: "True"
-    reason: ""
 - name: hcloudmachinetemplates
   resourceGroup: infrastructure.cluster.x-k8s.io
-  skip:
+  skipIfTrue:
   - type: HCloudTokenAvailable
-    status: "True"
-    reason: ""
 - name: hetznerclusterstackreleases
   resourceGroup: infrastructure.clusterstack.x-k8s.io
-  skip:
+  skipIfTrue:
   - type: Ready
-    status: "True"
-    reason: ""
   - type: AssetsClientAPIAvailable
-    status: "True"
-    reason: ""
   - type: CreatedNodeImageObjects
-    status: "True"
-    reason: ""
   - type: NodeImagesReady
-    status: "True"
-    reason: ""
 - name: hetznernodeimagereleases
   resourceGroup: infrastructure.clusterstack.x-k8s.io
-  skip:
+  skipIfTrue:
   - type: Ready
-    status: "True"
-    reason: ""
   - type: HCloudCredentialsAvailable
-    status: "True"
-    reason: ""
   - type: NodeImageBuilt
-    status: "True"
-    reason: ""
   - type: NodeImageReleaseDownloaded
-    status: "True"
-    reason: ""
 - name: infrastructureproviders
   resourceGroup: operator.cluster.x-k8s.io
-  skip:
+  skipIfTrue:
   - type: Ready
-    status: "True"
     reason: MinimumReplicasAvailable
   - type: PreflightCheckPassed
-    status: "True"
-    reason: ""
   - type: ProviderInstalled
-    status: "True"
-    reason: ""
 - name: coreproviders
   resourceGroup: operator.cluster.x-k8s.io
-  skip:
+  skipIfTrue:
   - type: Ready
-    status: "True"
     reason: MinimumReplicasAvailable
   - type: PreflightCheckPassed
-    status: "True"
-    reason: ""
   - type: ProviderInstalled
-    status: "True"
-    reason: ""
   - type: ProviderUpgraded
-    status: "True"
-    reason: ""
 - name: addonproviders
   resourceGroup: operator.cluster.x-k8s.io
-  skip:
+  skipIfTrue:
   - type: Ready
-    status: "True"
     reason: MinimumReplicasAvailable
   - type: PreflightCheckPassed
-    status: "True"
-    reason: ""
   - type: ProviderInstalled
-    status: "True"
-    reason: ""
   - type: ProviderUpgraded
-    status: "True"
-    reason: ""
 - name: controlplaneproviders
   resourceGroup: operator.cluster.x-k8s.io
-  skip:
+  skipIfTrue:
   - type: Ready
-    status: "True"
     reason: MinimumReplicasAvailable
   - type: PreflightCheckPassed
-    status: "True"
-    reason: ""
   - type: ProviderInstalled
-    status: "True"
-    reason: ""
   - type: ProviderUpgraded
-    status: "True"
-    reason: ""
 - name: bootstrapproviders
   resourceGroup: operator.cluster.x-k8s.io
-  skip:
+  skipIfTrue:
   - type: Ready
-    status: "True"
     reason: MinimumReplicasAvailable
   - type: PreflightCheckPassed
-    status: "True"
-    reason: ""
   - type: ProviderInstalled
-    status: "True"
-    reason: ""
   - type: ProviderUpgraded
-    status: "True"
-    reason: ""
 - name: extensionconfigs
   resourceGroup: runtime.cluster.x-k8s.io
-  skip:
+  skipIfTrue:
   - type: Discovered
-    status: "True"
-    reason: ""
 - name: customresourcedefinitions
   resourceGroup: apiextensions.k8s.io
-  skip:
+  skipIfTrue:
   - type: NamesAccepted
-    status: "True"
     reason: NoConflicts
   - type: Established
-    status: "True"
     reason: InitialNamesAccepted
 - name: clusterclasses
   resourceGroup: cluster.x-k8s.io
-  skip:
+  skipIfTrue:
   - type: RefVersionsUpToDate
-    status: "True"
-    reason: ""
   - type: VariablesReconciled
-    status: "True"
-    reason: ""
+- name: servicecidrs
+  resourceGroup: networking.k8s.io
+  skipIfTrue:
+  - type: Ready
