@@ -36,10 +36,11 @@ Output is usualy:
 			return fmt.Errorf("auto-add requested but no config file found")
 		}
 
-		if cfg == nil && arguments.AutoAddFromLegacyConfig && path != "" {
+		if cfg == nil {
 			cfg = &checkconditions.Config{}
-			cfg.SetPath(path)
-		} else if cfg != nil && path != "" {
+		}
+
+		if path != "" {
 			cfg.SetPath(path)
 		}
 
