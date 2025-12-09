@@ -24,7 +24,7 @@ Output is usualy:
 			arguments.RetryForEver = true
 		}
 
-		cfg, path, err := checkconditions.LoadConfig()
+		cfg, path, err := checkconditions.LoadConfig(arguments.SkipBuiltinConfig)
 		if err != nil {
 			if errors.Is(err, checkconditions.ErrInvalidConfigYAML) {
 				cmd.SilenceUsage = true
@@ -32,18 +32,29 @@ Output is usualy:
 			return err
 		}
 
-		if arguments.AutoAddFromLegacyConfig && path == "" {
-			return fmt.Errorf("auto-add requested but no config file found")
-		}
-
 		if cfg == nil {
 			cfg = &checkconditions.Config{}
+		}
+
+		if arguments.AutoAddFromLegacyConfig && path == "" {
+			newPath, created, err := checkconditions.EnsureConfigPath()
+			if err != nil {
+				return err
+			}
+			if created {
+				fmt.Printf("Created config at %s\n", newPath)
+			}
+			cfg.SetPath(newPath)
+			path = newPath
 		}
 
 		if path != "" {
 			cfg.SetPath(path)
 		}
 
+		if arguments.Verbose && !arguments.SkipBuiltinConfig {
+			fmt.Println("Loaded built-in config")
+		}
 		if arguments.Verbose && cfg != nil && path != "" {
 			fmt.Printf("Loaded config from %s\n", path)
 		}
@@ -77,4 +88,6 @@ func init() {
 	rootCmd.PersistentFlags().Int16VarP(&arguments.RetryCount, "retry-count", "", 5, "Network errors: How many times to retry the command before giving up. This applies only to the first connection. As soon as a successful connection is made, the command will retry forever. Set to zero to also retry the first connection forever.")
 
 	rootCmd.PersistentFlags().BoolVar(&arguments.AutoAddFromLegacyConfig, "auto-add-from-legacy-config", false, "Automatically append entries that the legacy logic would ignore.")
+
+	rootCmd.PersistentFlags().BoolVar(&arguments.SkipBuiltinConfig, "skip-loading-built-in-config", false, "Skip loading the embedded built-in condition config.")
 }

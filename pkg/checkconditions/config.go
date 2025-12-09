@@ -2,6 +2,7 @@ package checkconditions
 
 import (
 	"bytes"
+	_ "embed"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,6 +14,9 @@ import (
 	yamlv2 "gopkg.in/yaml.v2"
 	"sigs.k8s.io/yaml"
 )
+
+//go:embed check-conditions.yaml
+var builtinConfigYAML []byte
 
 const defaultConfigRelPath = ".config/check-conditions/check-conditions.yaml"
 
@@ -43,13 +47,55 @@ func ConfigPath() (string, error) {
 	return "", nil
 }
 
+// DefaultHomeConfigPath returns the path to the user config under HOME.
+func DefaultHomeConfigPath() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("unable to determine home directory: %w", err)
+	}
+	return filepath.Join(home, defaultConfigRelPath), nil
+}
+
+// EnsureConfigPath creates ~/.config/check-conditions/check-conditions.yaml when missing.
+func EnsureConfigPath() (string, bool, error) {
+	path, err := DefaultHomeConfigPath()
+	if err != nil {
+		return "", false, err
+	}
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", false, err
+	}
+	created := false
+	if _, err := os.Stat(path); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			if err := os.WriteFile(path, []byte("resources: []\n"), 0o600); err != nil {
+				return "", false, err
+			}
+			created = true
+		} else {
+			return "", false, err
+		}
+	}
+	return path, created, nil
+}
+
 // Config holds the user provided resource-level overrides that should be applied
 // when checking conditions.
 type Config struct {
 	Resources []ResourceConfig `yaml:"resources" json:"resources"`
 
-	groupTree map[string]*groupNode
-	path      string
+	groupTree        map[string]*groupNode
+	path             string
+	builtinResources []ResourceConfig
+}
+
+func (c *Config) setBuiltinResources(resources []ResourceConfig) {
+	if len(resources) == 0 {
+		c.builtinResources = nil
+		return
+	}
+	c.builtinResources = append([]ResourceConfig(nil), resources...)
 }
 
 // ResourceConfig describes how a single resource (group + name) should be treated.
@@ -431,7 +477,18 @@ func (c *Config) ensureResourceConfig(group, resource string) *ResourceConfig {
 }
 
 func (c *Config) buildTree() error {
-	for _, resource := range c.Resources {
+	c.groupTree = nil
+	if err := c.buildTreeFrom(c.Resources); err != nil {
+		return err
+	}
+	if err := c.buildTreeFrom(c.builtinResources); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (c *Config) buildTreeFrom(resources []ResourceConfig) error {
+	for _, resource := range resources {
 		if strings.TrimSpace(resource.ResourceGroup) == "" {
 			return fmt.Errorf("%w: resource %q missing group", ErrInvalidConfigYAML, resource.Name)
 		}
@@ -465,19 +522,47 @@ func (c *Config) addMatchers(group, name string, matchers []ConditionMatcher, de
 	return nil
 }
 
-// LoadConfig finds the config path and loads the file if it exists.
-func LoadConfig() (*Config, string, error) {
+func loadBuiltinResources() ([]ResourceConfig, error) {
+	if len(builtinConfigYAML) == 0 {
+		return nil, nil
+	}
+	var cfg Config
+	if err := yaml.UnmarshalStrict(builtinConfigYAML, &cfg); err != nil {
+		return nil, fmt.Errorf("unable to parse builtin config: %w", err)
+	}
+	return cfg.Resources, nil
+}
+
+// LoadConfig finds the config path, loads the file if it exists, and merges it with the built-in config.
+func LoadConfig(skipBuiltin bool) (*Config, string, error) {
+	var builtin []ResourceConfig
+	if !skipBuiltin {
+		var err error
+		if builtin, err = loadBuiltinResources(); err != nil {
+			return nil, "", err
+		}
+	}
+
 	path, err := ConfigPath()
 	if err != nil {
 		return nil, "", err
 	}
-	if path == "" {
-		return nil, "", nil
+
+	var cfg *Config
+	if path != "" {
+		cfg, err = LoadConfigFromPath(path)
+		if err != nil {
+			return nil, "", err
+		}
+	} else {
+		cfg = &Config{}
 	}
-	cfg, err := LoadConfigFromPath(path)
-	if err != nil {
+
+	cfg.setBuiltinResources(builtin)
+	if err := cfg.buildTree(); err != nil {
 		return nil, "", err
 	}
+
 	return cfg, path, nil
 }
 
@@ -497,9 +582,6 @@ func LoadConfigFromPath(path string) (*Config, error) {
 		return nil, fmt.Errorf("%w: unable to parse config at %s: %w", ErrInvalidConfigYAML, path, err)
 	}
 	cfg.path = path
-	if err := cfg.buildTree(); err != nil {
-		return nil, err
-	}
 	return &cfg, nil
 }
 

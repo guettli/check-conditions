@@ -33,6 +33,7 @@ type Arguments struct {
 	Timeout                 time.Duration
 	AutoAddFromLegacyConfig bool
 	Config                  *Config
+	SkipBuiltinConfig       bool
 }
 
 var resourcesToSkip = []string{
