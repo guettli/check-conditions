@@ -468,7 +468,8 @@ var conditionTypesOfResourceWithPositiveMeaning = map[string][]string{
 		"RootDeviceHintsValidated",
 	},
 	"clusters": {
-		"ContinuousArchiving", // postgresql.cnpg.io/v1
+		"ContinuousArchiving",   // postgresql.cnpg.io/v1
+		"RemoteConnectionProbe", // capi
 	},
 	"clusteraddons": {
 		"ClusterAddonConfigValidated",
@@ -508,6 +509,7 @@ var conditionTypesOfResourceWithNegativeMeaning = map[string][]string{
 		"Paused",
 		"ScalingDown",
 		"ScalingUp",
+		"Remediating",
 	},
 	"kubeadmconfigs": {
 		"Paused",
@@ -518,6 +520,7 @@ var conditionTypesOfResourceWithNegativeMeaning = map[string][]string{
 		"RollingOut",
 		"ScalingDown",
 		"ScalingUp",
+		"Remediating",
 	},
 	"machinedeployments": {
 		"Deleting",
