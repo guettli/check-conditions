@@ -31,7 +31,7 @@ I found no tool which monitors all conditions of all resource objects. So I wrot
 
 ## Executing
 
-```
+```console
 go run github.com/guettli/check-conditions@latest all
 ```
 
@@ -76,6 +76,21 @@ You just need to copy the first three columns of the output and paste it to `kub
 * There is package which helps working with Conditions in Go: There are functions [MarkFalse](https://pkg.go.dev/sigs.k8s.io/cluster-api/util/conditions#MarkFalse), [MarkTrue](https://pkg.go.dev/sigs.k8s.io/cluster-api/util/conditions#MarkTrue) to update the conditions. The function [SetSummary](https://pkg.go.dev/sigs.k8s.io/cluster-api/util/conditions#SetSummary) can get used to set the "Ready" condition according to the other conditions of the resource.
 
 The [API convention of Kubernetes about Status and Conditions](https://github.com/kubernetes/community/blob/master/contributors/devel/sig-architecture/api-conventions.md#typical-status-properties) are more general. Here "True" can mean "healthy" (for example "DiskPressure").
+
+## What its's not
+
+My check-conditions tool was written to help me to debug Kubernetes controllers. I develop in the
+context of Cluster-API, and in this context Pods, Services, Ingres, RBACs, ... are less important.
+This tool is not a general purpose troubleshooting tool. It can help, but it only checks the
+conditions.
+
+If you look for a general purpose troubleshooting tool, then try this:
+
+```console
+go run github.com/derailed/popeye@latest -A -l warn
+```
+
+[derailed/popeye: 👀 A Kubernetes cluster resource sanitizer](https://github.com/derailed/popeye)
 
 ## TODO
 
