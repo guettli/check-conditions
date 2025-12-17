@@ -46,5 +46,7 @@ func init() {
 
 	rootCmd.PersistentFlags().StringVarP(&arguments.Name, "name", "", "", "A string which will be printed in the output. Usefull if you have several terminals running the 'while' sub-command.")
 
+	rootCmd.PersistentFlags().StringVarP(&arguments.Namespace, "namespace", "n", "", "Only check the given namespace and skip cluster-scoped resources")
+
 	rootCmd.PersistentFlags().Int16VarP(&arguments.RetryCount, "retry-count", "", 5, "Network errors: How many times to retry the command before giving up. This applies only to the first connection. As soon as a successful connection is made, the command will retry forever. Set to zero to also retry the first connection forever.")
 }

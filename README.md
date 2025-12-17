@@ -35,6 +35,12 @@ I found no tool which monitors all conditions of all resource objects. So I wrot
 go run github.com/guettli/check-conditions@latest all
 ```
 
+Use `-n/--namespace` followed by a namespace name to restrict the checks to that namespace and skip cluster-scoped resources. For example:
+
+```console
+go run github.com/guettli/check-conditions@latest all -n kube-system
+```
+
 ## Terminology
 
 Since I found not good umbrella term for CRDs and core resource types, I use the term CRD.

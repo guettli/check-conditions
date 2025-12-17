@@ -28,6 +28,7 @@ type Arguments struct {
 	WhileRegex        *regexp.Regexp
 	ProgrammStartTime time.Time
 	Name              string
+	Namespace         string
 	RetryCount        int16
 	RetryForEver      bool
 	Timeout           time.Duration
@@ -183,8 +184,12 @@ func RunCheckAllConditions(ctx context.Context, config *restclient.Config, args 
 	if name != "" {
 		name = " (" + name + ")"
 	}
-	fmt.Printf("Checked %d conditions of %d resources of %d types. Duration: %s%s\n",
-		counter.CheckedConditions, counter.CheckedResources, counter.CheckedResourceTypes, time.Since(counter.StartTime).Round(time.Millisecond), name)
+	scope := " in all namespaces"
+	if args.Namespace != "" {
+		scope = fmt.Sprintf(" in namespace %s", args.Namespace)
+	}
+	fmt.Printf("Checked %d conditions of %d resources of %d types%s. Duration: %s%s\n",
+		counter.CheckedConditions, counter.CheckedResources, counter.CheckedResourceTypes, scope, time.Since(counter.StartTime).Round(time.Millisecond), name)
 
 	if args.WhileRegex == nil {
 		// "all" command
@@ -202,6 +207,12 @@ func RunAndGetCounter(ctx context.Context, config *restclient.Config, args *Argu
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		return counter, fmt.Errorf("error creating clientset: %w", err)
+	}
+
+	if args.Namespace != "" {
+		if _, err := clientset.CoreV1().Namespaces().Get(ctx, args.Namespace, metav1.GetOptions{}); err != nil {
+			return counter, fmt.Errorf("namespace %q not found", args.Namespace)
+		}
 	}
 
 	dynClient, err := dynamic.NewForConfig(config)
@@ -258,6 +269,10 @@ func createJobs(serverResources []*metav1.APIResourceList, jobs chan handleResou
 			continue
 		}
 		for i := range resourceList.APIResources {
+			namespaced := resourceList.APIResources[i].Namespaced
+			if args.Namespace != "" && !namespaced {
+				continue
+			}
 			jobs <- handleResourceTypeInput{
 				args:      args,
 				dynClient: dynClient,
@@ -266,6 +281,7 @@ func createJobs(serverResources []*metav1.APIResourceList, jobs chan handleResou
 					Version:  groupVersion.Version,
 					Resource: resourceList.APIResources[i].Name,
 				},
+				namespaced: namespaced,
 			}
 		}
 	}
@@ -666,10 +682,11 @@ func conditionTypeHasNegativeMeaning(resource string, ct string) bool {
 }
 
 type handleResourceTypeInput struct {
-	args      *Arguments
-	dynClient *dynamic.DynamicClient
-	gvr       schema.GroupVersionResource
-	workerID  int32
+	args       *Arguments
+	dynClient  *dynamic.DynamicClient
+	gvr        schema.GroupVersionResource
+	workerID   int32
+	namespaced bool
 }
 
 type handleResourceTypeOutput struct {
@@ -697,7 +714,23 @@ func handleResourceType(ctx context.Context, input handleResourceTypeInput) hand
 
 	output.checkedResourceTypes++
 
-	list, err := dynClient.Resource(gvr).List(ctx, metav1.ListOptions{})
+	if args.Namespace != "" && !input.namespaced {
+		return output
+	}
+
+	namespaceable := dynClient.Resource(gvr)
+	var resourceInterface dynamic.ResourceInterface
+	if input.namespaced {
+		if args.Namespace != "" {
+			resourceInterface = namespaceable.Namespace(args.Namespace)
+		} else {
+			resourceInterface = namespaceable.Namespace(metav1.NamespaceAll)
+		}
+	} else {
+		resourceInterface = namespaceable
+	}
+
+	list, err := resourceInterface.List(ctx, metav1.ListOptions{})
 	if err != nil {
 		fmt.Printf("..Error listing %s: %v. group %q version %q resource %q\n", name, err,
 			gvr.Group, gvr.Version, gvr.Resource)
