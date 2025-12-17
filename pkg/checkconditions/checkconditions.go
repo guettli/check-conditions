@@ -28,7 +28,7 @@ type Arguments struct {
 	WhileRegex              *regexp.Regexp
 	ProgrammStartTime       time.Time
 	Name                    string
-    Namespace         string
+	Namespace               string
 	RetryCount              int16
 	RetryForEver            bool
 	Timeout                 time.Duration
