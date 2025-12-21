@@ -479,13 +479,15 @@ func handleCondition(args *Arguments, condition interface{}, counter *handleReso
 			configSkip := skipConditionViaConfig(args.Config, group, resource, conditionType, conditionStatus,
 				conditionReason, conditionMessage)
 			if !configSkip {
-				fmt.Printf("WARNING: Legacy skips but config would NOT skip: %s %s %s=%s %s %q\n",
+				fmt.Fprintf(os.Stderr, "WARNING: Legacy skips but config would NOT skip: %s %s %s=%s %s %q\n",
 					group, resource, conditionType, conditionStatus,
 					conditionReason, conditionMessage)
 			}
 		}
 		// Auto-add mode: automatically append config entries based on legacy behavior
-		// Note: This mode is disabled when debug mode is enabled to avoid config modifications during debugging
+		// Note: Auto-add mode is disabled when debug mode is enabled because:
+		// 1. Debug mode is for comparing behavior, not modifying config
+		// 2. Config modifications during debugging would interfere with accurate comparison results
 		if !debugMode && args.AutoAddFromLegacyConfig {
 			configSkip := skipConditionViaConfig(args.Config, group, resource, conditionType, conditionStatus,
 				conditionReason, conditionMessage)
@@ -509,7 +511,7 @@ func handleCondition(args *Arguments, condition interface{}, counter *handleReso
 		configSkip := skipConditionViaConfig(args.Config, group, resource, conditionType, conditionStatus,
 			conditionReason, conditionMessage)
 		if configSkip {
-			fmt.Printf("WARNING: Legacy does NOT skip but config would skip: %s %s %s=%s %s %q\n",
+			fmt.Fprintf(os.Stderr, "WARNING: Legacy does NOT skip but config would skip: %s %s %s=%s %s %q\n",
 				group, resource, conditionType, conditionStatus,
 				conditionReason, conditionMessage)
 		}
