@@ -49,10 +49,10 @@ var resourcesToSkip = []string{
 	"tokenreviews",
 }
 
-// isDebugMode checks if the CHECK_CONDITIONS_COMPARE_WITH_NEW_CONFIG environment variable is set.
+// shouldCompareWithNewConfig checks if the CHECK_CONDITIONS_COMPARE_WITH_NEW_CONFIG environment variable is set.
 // When set, the tool will compare legacy and config-based condition classification
 // and warn when they differ.
-func isDebugMode() bool {
+func shouldCompareWithNewConfig() bool {
 	return os.Getenv("CHECK_CONDITIONS_COMPARE_WITH_NEW_CONFIG") != ""
 }
 
@@ -465,8 +465,8 @@ func handleCondition(args *Arguments, condition interface{}, counter *handleReso
 	resource := gvr.Resource
 	group := gvr.Group
 
-	// Check if debug mode is enabled
-	debugMode := isDebugMode()
+	// Check if comparison mode is enabled
+	debugMode := shouldCompareWithNewConfig()
 
 	// Evaluate legacy classification (always used for actual decisions)
 	legacySkip := skipConditionLegacy(group, resource, conditionType, conditionStatus,

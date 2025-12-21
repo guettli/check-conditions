@@ -4,7 +4,7 @@ import (
 	"testing"
 )
 
-func TestIsDebugMode(t *testing.T) {
+func TestShouldCompareWithNewConfig(t *testing.T) {
 	tests := []struct {
 		name     string
 		envValue string
@@ -38,9 +38,9 @@ func TestIsDebugMode(t *testing.T) {
 				t.Setenv("CHECK_CONDITIONS_COMPARE_WITH_NEW_CONFIG", tt.envValue)
 			}
 
-			got := isDebugMode()
+			got := shouldCompareWithNewConfig()
 			if got != tt.want {
-				t.Errorf("isDebugMode() = %v, want %v (env=%q)", got, tt.want, tt.envValue)
+				t.Errorf("shouldCompareWithNewConfig() = %v, want %v (env=%q)", got, tt.want, tt.envValue)
 			}
 		})
 	}
