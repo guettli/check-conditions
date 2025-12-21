@@ -35,7 +35,7 @@ func TestIsDebugMode(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if tt.envValue != "" {
-				t.Setenv("CHECK_CONDITIONS_DEBUG", tt.envValue)
+				t.Setenv("CHECK_CONDITIONS_COMPARE_WITH_NEW_CONFIG", tt.envValue)
 			}
 
 			got := isDebugMode()

@@ -49,11 +49,11 @@ var resourcesToSkip = []string{
 	"tokenreviews",
 }
 
-// isDebugMode checks if the CHECK_CONDITIONS_DEBUG environment variable is set.
+// isDebugMode checks if the CHECK_CONDITIONS_COMPARE_WITH_NEW_CONFIG environment variable is set.
 // When set, the tool will compare legacy and config-based condition classification
 // and warn when they differ.
 func isDebugMode() bool {
-	return os.Getenv("CHECK_CONDITIONS_DEBUG") != ""
+	return os.Getenv("CHECK_CONDITIONS_COMPARE_WITH_NEW_CONFIG") != ""
 }
 
 type Counter struct {
