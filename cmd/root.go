@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/guettli/check-conditions/pkg/checkconditions"
@@ -22,6 +23,34 @@ Output is usualy:
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		if arguments.RetryCount == 0 {
 			arguments.RetryForEver = true
+		}
+
+		// Set mode: priority is flag > env var > legacy env var > default
+		if modeFlag != "" {
+			arguments.Mode = checkconditions.ConditionMode(strings.ToLower(modeFlag))
+		} else {
+			envMode := os.Getenv("CHECK_CONDITIONS_MODE")
+			if envMode != "" {
+				arguments.Mode = checkconditions.ConditionMode(strings.ToLower(envMode))
+			} else {
+				// Check legacy environment variable for backward compatibility
+				if os.Getenv("CHECK_CONDITIONS_COMPARE_WITH_NEW_CONFIG") != "" {
+					arguments.Mode = checkconditions.ModeOldCompareNew
+				} else {
+					arguments.Mode = checkconditions.ModeOnlyOld
+				}
+			}
+		}
+
+		// Validate mode
+		validModes := map[checkconditions.ConditionMode]bool{
+			checkconditions.ModeOnlyOld:       true,
+			checkconditions.ModeOnlyNew:       true,
+			checkconditions.ModeOldCompareNew: true,
+			checkconditions.ModeNewCompareOld: true,
+		}
+		if !validModes[arguments.Mode] {
+			return fmt.Errorf("invalid mode %q: must be one of: only-old, only-new, old-compare-new, new-compare-old", arguments.Mode)
 		}
 
 		cfg, path, err := checkconditions.LoadConfig(arguments.SkipBuiltinConfig)
@@ -73,6 +102,7 @@ func Execute() {
 }
 
 var arguments = checkconditions.Arguments{}
+var modeFlag string
 
 func init() {
 	arguments.ProgrammStartTime = time.Now()
@@ -88,6 +118,8 @@ func init() {
 	rootCmd.PersistentFlags().StringVarP(&arguments.Namespace, "namespace", "n", "", "Only check the given namespace and skip cluster-scoped resources")
 
 	rootCmd.PersistentFlags().Int16VarP(&arguments.RetryCount, "retry-count", "", 5, "Network errors: How many times to retry the command before giving up. This applies only to the first connection. As soon as a successful connection is made, the command will retry forever. Set to zero to also retry the first connection forever.")
+
+	rootCmd.PersistentFlags().StringVar(&modeFlag, "mode", "", "Condition classification mode: only-old (default), only-new, old-compare-new, new-compare-old. Can also be set via CHECK_CONDITIONS_MODE environment variable.")
 
 	rootCmd.PersistentFlags().BoolVar(&arguments.AutoAddFromLegacyConfig, "auto-add-from-legacy-config", false, "Automatically append entries that the legacy logic would ignore.")
 
