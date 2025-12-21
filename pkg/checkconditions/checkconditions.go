@@ -22,6 +22,20 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 )
 
+// ConditionMode defines how conditions should be classified
+type ConditionMode string
+
+const (
+	// ModeOnlyOld uses only legacy hardcoded logic (default)
+	ModeOnlyOld ConditionMode = "only-old"
+	// ModeOnlyNew uses only new config-based logic
+	ModeOnlyNew ConditionMode = "only-new"
+	// ModeNewCompareOld uses new config, but compares with legacy and warns on differences
+	ModeNewCompareOld ConditionMode = "new-compare-old"
+	// ModeOldCompareNew uses old legacy, but compares with new config and warns on differences
+	ModeOldCompareNew ConditionMode = "old-compare-new"
+)
+
 type Arguments struct {
 	Verbose                 bool
 	Sleep                   time.Duration
@@ -35,6 +49,7 @@ type Arguments struct {
 	AutoAddFromLegacyConfig bool
 	Config                  *Config
 	SkipBuiltinConfig       bool
+	Mode                    ConditionMode
 }
 
 var resourcesToSkip = []string{
@@ -47,13 +62,6 @@ var resourcesToSkip = []string{
 	"selfsubjectrulesreviews",
 	"subjectaccessreviews",
 	"tokenreviews",
-}
-
-// shouldCompareWithNewConfig checks if the CHECK_CONDITIONS_COMPARE_WITH_NEW_CONFIG environment variable is set.
-// When set, the tool will compare legacy and config-based condition classification
-// and warn when they differ.
-func shouldCompareWithNewConfig() bool {
-	return os.Getenv("CHECK_CONDITIONS_COMPARE_WITH_NEW_CONFIG") != ""
 }
 
 type Counter struct {
@@ -465,57 +473,82 @@ func handleCondition(args *Arguments, condition interface{}, counter *handleReso
 	resource := gvr.Resource
 	group := gvr.Group
 
-	// Check if comparison mode is enabled
-	debugMode := shouldCompareWithNewConfig()
-
-	// Evaluate legacy classification (always used for actual decisions)
+	// Evaluate both classification methods
 	legacySkip := skipConditionLegacy(group, resource, conditionType, conditionStatus,
 		conditionReason, conditionMessage)
+	configSkip := skipConditionViaConfig(args.Config, group, resource, conditionType, conditionStatus,
+		conditionReason, conditionMessage)
 
-	// Always use legacy behavior for the actual decision
-	if legacySkip {
-		// In debug mode, compare with config-based classification
-		if debugMode {
-			configSkip := skipConditionViaConfig(args.Config, group, resource, conditionType, conditionStatus,
+	// Determine which method to use based on mode
+	var shouldSkip bool
+	var compareMethod bool
+	var otherSkip bool
+
+	switch args.Mode {
+	case ModeOnlyOld:
+		// Use only legacy logic (default behavior)
+		shouldSkip = legacySkip
+		compareMethod = false
+	case ModeOnlyNew:
+		// Use only new config logic
+		shouldSkip = configSkip
+		compareMethod = false
+	case ModeOldCompareNew:
+		// Use old legacy, but compare with new config
+		shouldSkip = legacySkip
+		compareMethod = true
+		otherSkip = configSkip
+	case ModeNewCompareOld:
+		// Use new config, but compare with old legacy
+		shouldSkip = configSkip
+		compareMethod = true
+		otherSkip = legacySkip
+	default:
+		// Default to only-old mode
+		shouldSkip = legacySkip
+		compareMethod = false
+	}
+
+	// If in compare mode, warn when methods disagree
+	if compareMethod && shouldSkip != otherSkip {
+		primaryMethod := "Legacy"
+		secondaryMethod := "config"
+		if args.Mode == ModeNewCompareOld {
+			primaryMethod = "Config"
+			secondaryMethod = "legacy"
+		}
+
+		if shouldSkip {
+			fmt.Fprintf(os.Stderr, "WARNING: %s skips but %s would NOT skip: %s %s %s=%s %s %q\n",
+				primaryMethod, secondaryMethod, group, resource, conditionType, conditionStatus,
 				conditionReason, conditionMessage)
-			if !configSkip {
-				fmt.Fprintf(os.Stderr, "WARNING: Legacy skips but config would NOT skip: %s %s %s=%s %s %q\n",
-					group, resource, conditionType, conditionStatus,
-					conditionReason, conditionMessage)
+		} else {
+			fmt.Fprintf(os.Stderr, "WARNING: %s does NOT skip but %s would skip: %s %s %s=%s %s %q\n",
+				primaryMethod, secondaryMethod, group, resource, conditionType, conditionStatus,
+				conditionReason, conditionMessage)
+		}
+	}
+
+	// Handle auto-add mode (only in old-only mode, not in compare modes)
+	if args.Mode == ModeOnlyOld && legacySkip && args.AutoAddFromLegacyConfig {
+		if !configSkip {
+			added, err := args.Config.addLegacyIgnore(group, resource, conditionType, conditionStatus,
+				conditionReason, conditionMessage)
+			if err != nil {
+				fmt.Printf("auto-add config failed: %v\n", err)
+			} else if added {
+				fmt.Printf("auto-added config entry for %s %s %s=%s\n",
+					group, resource, conditionType, conditionStatus)
 			}
 		}
-		// Auto-add mode: automatically append config entries based on legacy behavior
-		// Note: Auto-add mode is disabled when debug mode is enabled because:
-		// 1. Debug mode is for comparing behavior, not modifying config
-		// 2. Config modifications during debugging would interfere with accurate comparison results
-		if !debugMode && args.AutoAddFromLegacyConfig {
-			configSkip := skipConditionViaConfig(args.Config, group, resource, conditionType, conditionStatus,
-				conditionReason, conditionMessage)
-			if !configSkip {
-				added, err := args.Config.addLegacyIgnore(group, resource, conditionType, conditionStatus,
-					conditionReason, conditionMessage)
-				if err != nil {
-					fmt.Printf("auto-add config failed: %v\n", err)
-				} else if added {
-					fmt.Printf("auto-added config entry for %s %s %s=%s\n",
-						group, resource, conditionType, conditionStatus)
-				}
-			}
-		}
+	}
+
+	// If we should skip this condition, return without adding to rows
+	if shouldSkip {
 		return rows
 	}
 
-	// Legacy does NOT skip, so the condition will be reported
-	// In debug mode, warn if config would have skipped it
-	if debugMode {
-		configSkip := skipConditionViaConfig(args.Config, group, resource, conditionType, conditionStatus,
-			conditionReason, conditionMessage)
-		if configSkip {
-			fmt.Fprintf(os.Stderr, "WARNING: Legacy does NOT skip but config would skip: %s %s %s=%s %s %q\n",
-				group, resource, conditionType, conditionStatus,
-				conditionReason, conditionMessage)
-		}
-	}
+	// Otherwise, add the condition to rows (it's unhealthy)
 	s, _ := conditionMap["lastTransitionTime"].(string)
 	conditionLastTransitionTime := time.Time{}
 	if s != "" {

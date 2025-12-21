@@ -4,44 +4,55 @@ import (
 	"testing"
 )
 
-func TestShouldCompareWithNewConfig(t *testing.T) {
+func TestConditionMode(t *testing.T) {
 	tests := []struct {
 		name     string
-		envValue string
-		want     bool
+		mode     ConditionMode
+		wantMode ConditionMode
 	}{
 		{
-			name:     "env var not set",
-			envValue: "",
-			want:     false,
+			name:     "only-old mode",
+			mode:     ModeOnlyOld,
+			wantMode: ModeOnlyOld,
 		},
 		{
-			name:     "env var set to 1",
-			envValue: "1",
-			want:     true,
+			name:     "only-new mode",
+			mode:     ModeOnlyNew,
+			wantMode: ModeOnlyNew,
 		},
 		{
-			name:     "env var set to true",
-			envValue: "true",
-			want:     true,
+			name:     "old-compare-new mode",
+			mode:     ModeOldCompareNew,
+			wantMode: ModeOldCompareNew,
 		},
 		{
-			name:     "env var set to any value",
-			envValue: "any_value",
-			want:     true,
+			name:     "new-compare-old mode",
+			mode:     ModeNewCompareOld,
+			wantMode: ModeNewCompareOld,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if tt.envValue != "" {
-				t.Setenv("CHECK_CONDITIONS_COMPARE_WITH_NEW_CONFIG", tt.envValue)
-			}
-
-			got := shouldCompareWithNewConfig()
-			if got != tt.want {
-				t.Errorf("shouldCompareWithNewConfig() = %v, want %v (env=%q)", got, tt.want, tt.envValue)
+			if tt.mode != tt.wantMode {
+				t.Errorf("mode = %v, want %v", tt.mode, tt.wantMode)
 			}
 		})
+	}
+}
+
+func TestConditionModeConstants(t *testing.T) {
+	// Verify the constant values are as expected
+	if ModeOnlyOld != "only-old" {
+		t.Errorf("ModeOnlyOld = %q, want %q", ModeOnlyOld, "only-old")
+	}
+	if ModeOnlyNew != "only-new" {
+		t.Errorf("ModeOnlyNew = %q, want %q", ModeOnlyNew, "only-new")
+	}
+	if ModeOldCompareNew != "old-compare-new" {
+		t.Errorf("ModeOldCompareNew = %q, want %q", ModeOldCompareNew, "old-compare-new")
+	}
+	if ModeNewCompareOld != "new-compare-old" {
+		t.Errorf("ModeNewCompareOld = %q, want %q", ModeNewCompareOld, "new-compare-old")
 	}
 }
