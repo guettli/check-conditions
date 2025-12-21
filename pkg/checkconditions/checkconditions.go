@@ -49,6 +49,13 @@ var resourcesToSkip = []string{
 	"tokenreviews",
 }
 
+// isDebugMode checks if the CHECK_CONDITIONS_DEBUG environment variable is set.
+// When set, the tool will compare legacy and config-based condition classification
+// and warn when they differ.
+func isDebugMode() bool {
+	return os.Getenv("CHECK_CONDITIONS_DEBUG") != ""
+}
+
 type Counter struct {
 	CheckedResources     int32
 	CheckedConditions    int32
@@ -458,14 +465,30 @@ func handleCondition(args *Arguments, condition interface{}, counter *handleReso
 	resource := gvr.Resource
 	group := gvr.Group
 
-	configSkip := skipConditionViaConfig(args.Config, group, resource, conditionType, conditionStatus,
+	// In debug mode, compare legacy and config-based classification
+	debugMode := isDebugMode()
+	var configSkip bool
+	if debugMode {
+		configSkip = skipConditionViaConfig(args.Config, group, resource, conditionType, conditionStatus,
+			conditionReason, conditionMessage)
+	}
+
+	legacySkip := skipConditionLegacy(group, resource, conditionType, conditionStatus,
 		conditionReason, conditionMessage)
 
-	if skipConditionLegacy(group, resource, conditionType, conditionStatus,
-		conditionReason, conditionMessage) {
-		if !configSkip {
-			// new way would not skip this condition
-			if args.AutoAddFromLegacyConfig {
+	// Always use legacy behavior for the actual decision
+	if legacySkip {
+		// In debug mode, warn if config would classify differently
+		if debugMode && !configSkip {
+			fmt.Printf("WARNING: Legacy skips but config would NOT skip: %s %s %s=%s %s %q\n",
+				group, resource, conditionType, conditionStatus,
+				conditionReason, conditionMessage)
+		}
+		// Handle auto-add mode (existing functionality)
+		if !debugMode && args.AutoAddFromLegacyConfig {
+			configSkip = skipConditionViaConfig(args.Config, group, resource, conditionType, conditionStatus,
+				conditionReason, conditionMessage)
+			if !configSkip {
 				added, err := args.Config.addLegacyIgnore(group, resource, conditionType, conditionStatus,
 					conditionReason, conditionMessage)
 				if err != nil {
@@ -475,17 +498,14 @@ func handleCondition(args *Arguments, condition interface{}, counter *handleReso
 						group, resource, conditionType, conditionStatus)
 				}
 			}
-			if !args.AutoAddFromLegacyConfig && args.Verbose {
-				fmt.Printf("todo: config would not ignore this: %s %s %s %s %s %s\n",
-					group, resource, conditionType, conditionStatus,
-					conditionReason, conditionMessage)
-			}
 		}
 		return rows
 	}
-	if configSkip && args.Verbose {
-		// new way would skip this condition
-		fmt.Printf("todo: config would ignore this: %s %s %s %s %s %s\n",
+
+	// Legacy does NOT skip, so the condition will be reported
+	// In debug mode, warn if config would have skipped it
+	if debugMode && configSkip {
+		fmt.Printf("WARNING: Legacy does NOT skip but config would skip: %s %s %s=%s %s %q\n",
 			group, resource, conditionType, conditionStatus,
 			conditionReason, conditionMessage)
 	}
