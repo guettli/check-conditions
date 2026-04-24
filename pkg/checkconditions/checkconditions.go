@@ -483,6 +483,7 @@ var conditionTypesOfResourceWithPositiveMeaning = map[string][]string{
 	},
 	"hetznerbaremetalhosts": {
 		"RootDeviceHintsValidated",
+		"NodeBootIDRetrieved",
 	},
 	"clusters": {
 		"ContinuousArchiving",   // postgresql.cnpg.io/v1
