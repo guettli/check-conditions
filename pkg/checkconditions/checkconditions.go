@@ -530,6 +530,9 @@ var conditionTypesOfResourceWithNegativeMeaning = map[string][]string{
 	"kubeadmconfigs": {
 		"Paused",
 	},
+	"extensionconfigs": {
+		"Paused",
+	},
 	"kubeadmcontrolplanes": {
 		"Deleting",
 		"Paused",
