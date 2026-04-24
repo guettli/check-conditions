@@ -521,44 +521,23 @@ var conditionTypesOfResourceWithNegativeMeaning = map[string][]string{
 	},
 	"clusters": {
 		"RollingOut", // capi
-		"Deleting",
-		"Paused",
 		"ScalingDown",
 		"ScalingUp",
 		"Remediating",
 	},
-	"kubeadmconfigs": {
-		"Paused",
-	},
-	"extensionconfigs": {
-		"Paused",
-	},
 	"kubeadmcontrolplanes": {
-		"Deleting",
-		"Paused",
 		"RollingOut",
 		"ScalingDown",
 		"ScalingUp",
 		"Remediating",
 	},
 	"machinedeployments": {
-		"Deleting",
-		"Paused",
 		"RollingOut",
 		"ScalingDown",
 		"ScalingUp",
 		"Remediating",
 	},
-	"machinehealthchecks": {
-		"Paused",
-	},
-	"machines": {
-		"Paused",
-		"Deleting",
-	},
 	"machinesets": {
-		"Paused",
-		"Deleting",
 		"ScalingDown",
 		"ScalingUp",
 		"Remediating",
@@ -671,7 +650,7 @@ func conditionTypeHasNegativeMeaning(resource string, ct string) bool {
 	}
 
 	for _, suffix := range []string{
-		"Unavailable", "Pressure", "Dangling", "Unhealthy",
+		"Unavailable", "Pressure", "Dangling", "Unhealthy", "Paused", "Deleting",
 	} {
 		if strings.HasSuffix(ct, suffix) {
 			return true
