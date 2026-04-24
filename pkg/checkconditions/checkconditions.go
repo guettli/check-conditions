@@ -462,6 +462,7 @@ func conditionToSkip(ct string) bool {
 		"LoadBalancerAttachedToNetwork",
 		"NetworkAttached",
 		"PodReadyToStartContainers", // completed pods have "False".
+		"RefVersionsUpToDate",       // happens during api version transition.
 	}
 	return slices.Contains(toSkip, ct)
 }
