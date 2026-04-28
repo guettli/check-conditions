@@ -34,10 +34,34 @@ type Arguments struct {
 	NamespacePatterns []string
 	// Namespaces is the resolved list after matching patterns against the
 	// cluster's namespaces. Populated by RunAndGetCounter.
-	Namespaces   []string
-	RetryCount   int16
-	RetryForEver bool
-	Timeout      time.Duration
+	Namespaces []string
+	// ExcludeNamespacePatterns is the raw input from --exclude-namespace.
+	// Each entry may be an exact namespace name or a glob pattern. Matched
+	// per-object at filter time; non-matching entries are not an error.
+	ExcludeNamespacePatterns []string
+	RetryCount               int16
+	RetryForEver             bool
+	Timeout                  time.Duration
+}
+
+// matchAnyPattern reports whether name matches any of the given glob patterns.
+func matchAnyPattern(name string, patterns []string) bool {
+	for _, p := range patterns {
+		if ok, err := path.Match(p, name); err == nil && ok {
+			return true
+		}
+	}
+	return false
+}
+
+// validatePatterns returns an error if any pattern has invalid glob syntax.
+func validatePatterns(patterns []string) error {
+	for _, p := range patterns {
+		if _, err := path.Match(p, ""); err != nil {
+			return fmt.Errorf("invalid namespace pattern %q: %w", p, err)
+		}
+	}
+	return nil
 }
 
 // namespaceSet returns a lookup set of resolved namespaces. Empty when no
@@ -323,6 +347,9 @@ func RunAndGetCounter(ctx context.Context, config *restclient.Config, args *Argu
 		return counter, fmt.Errorf("error creating clientset: %w", err)
 	}
 
+	if err := validatePatterns(args.ExcludeNamespacePatterns); err != nil {
+		return counter, err
+	}
 	if args.namespaceFilterActive() {
 		// Resolve once per run; subsequent retries reuse the resolved list.
 		if len(args.Namespaces) == 0 {
@@ -427,18 +454,23 @@ func containsSlash(s string) bool {
 func printResources(args *Arguments, list *unstructured.UnstructuredList, gvr schema.GroupVersionResource,
 	counter *handleResourceTypeOutput, workerID int32,
 ) (lines []string, again bool) {
-	// When the user supplied multiple namespaces (or globs), we list the
-	// resources cluster-wide and drop the ones not in the resolved set.
-	// A single namespace is already filtered server-side.
-	var nsFilter map[string]struct{}
+	// When the user supplied multiple include namespaces (or globs), we list
+	// resources cluster-wide and drop the ones not in the resolved set. A
+	// single include is already filtered server-side. Excludes always apply
+	// here for namespaced lists (cluster-scoped resources have no namespace).
+	var nsInclude map[string]struct{}
 	if len(args.Namespaces) > 1 {
-		nsFilter = args.namespaceSet()
+		nsInclude = args.namespaceSet()
 	}
 	for _, obj := range list.Items {
-		if nsFilter != nil {
-			if _, ok := nsFilter[obj.GetNamespace()]; !ok {
+		ns := obj.GetNamespace()
+		if nsInclude != nil {
+			if _, ok := nsInclude[ns]; !ok {
 				continue
 			}
+		}
+		if ns != "" && matchAnyPattern(ns, args.ExcludeNamespacePatterns) {
+			continue
 		}
 		counter.checkedResources++
 		var conditions []interface{}
@@ -836,10 +868,14 @@ func handleResourceType(ctx context.Context, input handleResourceTypeInput) hand
 	namespaceable := dynClient.Resource(gvr)
 	var resourceInterface dynamic.ResourceInterface
 	if input.namespaced {
-		// One namespace: filter on the server. Multiple namespaces or globs:
-		// list cluster-wide and filter results client-side in printResources.
-		if len(args.Namespaces) == 1 {
+		// One namespace and no excludes: filter on the server. Otherwise list
+		// cluster-wide and apply include/exclude filters in printResources.
+		canServerSideFilter := len(args.Namespaces) == 1 && len(args.ExcludeNamespacePatterns) == 0
+		if canServerSideFilter {
 			resourceInterface = namespaceable.Namespace(args.Namespaces[0])
+		} else if len(args.Namespaces) == 1 && matchAnyPattern(args.Namespaces[0], args.ExcludeNamespacePatterns) {
+			// Single included namespace is itself excluded — nothing to do.
+			return output
 		} else {
 			resourceInterface = namespaceable.Namespace(metav1.NamespaceAll)
 		}

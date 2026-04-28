@@ -48,5 +48,7 @@ func init() {
 
 	rootCmd.PersistentFlags().StringSliceVarP(&arguments.NamespacePatterns, "namespace", "n", nil, "Only check the given namespaces and skip cluster-scoped resources. Accepts a comma-separated list. Glob patterns (*, ?, [...]) are supported. Example: -n kube-system,kube-public or -n 'kube-*'")
 
+	rootCmd.PersistentFlags().StringSliceVar(&arguments.ExcludeNamespacePatterns, "exclude-namespace", nil, "Skip the given namespaces. Accepts a comma-separated list. Glob patterns (*, ?, [...]) are supported. Combine with -n to subtract: -n 'foo-*' --exclude-namespace foo-bar checks every foo-* namespace except foo-bar.")
+
 	rootCmd.PersistentFlags().Int16VarP(&arguments.RetryCount, "retry-count", "", 5, "Network errors: How many times to retry the command before giving up. This applies only to the first connection. As soon as a successful connection is made, the command will retry forever. Set to zero to also retry the first connection forever.")
 }

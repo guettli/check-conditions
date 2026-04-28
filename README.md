@@ -43,6 +43,13 @@ go run github.com/guettli/check-conditions@latest all -n kube-system,kube-public
 go run github.com/guettli/check-conditions@latest all -n 'kube-*'
 ```
 
+Use `--exclude-namespace` to skip namespaces. Same syntax: comma-separated list with glob support. It can be combined with `-n` to subtract from the included set — for example, include every `foo-*` namespace except `foo-bar`:
+
+```console
+go run github.com/guettli/check-conditions@latest all -n 'foo-*' --exclude-namespace foo-bar
+go run github.com/guettli/check-conditions@latest all --exclude-namespace 'kube-*,longhorn-system'
+```
+
 ## Terminology
 
 Since I found not good umbrella term for CRDs and core resource types, I use the term CRD.
