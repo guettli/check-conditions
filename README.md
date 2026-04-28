@@ -35,10 +35,12 @@ I found no tool which monitors all conditions of all resource objects. So I wrot
 go run github.com/guettli/check-conditions@latest all
 ```
 
-Use `-n/--namespace` followed by a namespace name to restrict the checks to that namespace and skip cluster-scoped resources. For example:
+Use `-n/--namespace` to restrict the checks to one or more namespaces and skip cluster-scoped resources. The flag accepts a comma-separated list, and each entry may be a glob pattern (`*`, `?`, `[...]`). For example:
 
 ```console
 go run github.com/guettli/check-conditions@latest all -n kube-system
+go run github.com/guettli/check-conditions@latest all -n kube-system,kube-public
+go run github.com/guettli/check-conditions@latest all -n 'kube-*'
 ```
 
 ## Terminology

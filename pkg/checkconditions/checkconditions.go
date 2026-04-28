@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"path"
 	"regexp"
 	"strings"
 	"sync"
@@ -28,10 +29,118 @@ type Arguments struct {
 	WhileRegex        *regexp.Regexp
 	ProgrammStartTime time.Time
 	Name              string
-	Namespace         string
-	RetryCount        int16
-	RetryForEver      bool
-	Timeout           time.Duration
+	// NamespacePatterns is the raw input from -n. Each entry may be an exact
+	// namespace name or a glob pattern (*, ?, [...]).
+	NamespacePatterns []string
+	// Namespaces is the resolved list after matching patterns against the
+	// cluster's namespaces. Populated by RunAndGetCounter.
+	Namespaces   []string
+	RetryCount   int16
+	RetryForEver bool
+	Timeout      time.Duration
+}
+
+// namespaceSet returns a lookup set of resolved namespaces. Empty when no
+// namespace filter is in effect.
+func (a *Arguments) namespaceSet() map[string]struct{} {
+	if len(a.Namespaces) == 0 {
+		return nil
+	}
+	m := make(map[string]struct{}, len(a.Namespaces))
+	for _, ns := range a.Namespaces {
+		m[ns] = struct{}{}
+	}
+	return m
+}
+
+// namespaceFilterActive reports whether the user requested a namespace filter
+// (regardless of whether the patterns have been resolved yet).
+func (a *Arguments) namespaceFilterActive() bool {
+	return len(a.NamespacePatterns) > 0
+}
+
+func patternHasGlob(p string) bool {
+	return strings.ContainsAny(p, "*?[")
+}
+
+// resolveNamespacePatterns expands the user-supplied patterns into concrete
+// namespace names. Patterns without glob characters are kept as-is. Patterns
+// with glob characters are matched against the namespaces that exist in the
+// cluster. Returns an error if no namespace matches.
+func resolveNamespacePatterns(ctx context.Context, clientset *kubernetes.Clientset, patterns []string) ([]string, error) {
+	if len(patterns) == 0 {
+		return nil, nil
+	}
+
+	hasGlob := false
+	for _, p := range patterns {
+		if patternHasGlob(p) {
+			hasGlob = true
+			break
+		}
+	}
+
+	seen := map[string]struct{}{}
+	var resolved []string
+
+	if !hasGlob {
+		// Verify each exact namespace exists.
+		for _, p := range patterns {
+			if _, ok := seen[p]; ok {
+				continue
+			}
+			if _, err := clientset.CoreV1().Namespaces().Get(ctx, p, metav1.GetOptions{}); err != nil {
+				return nil, fmt.Errorf("namespace %q not found", p)
+			}
+			seen[p] = struct{}{}
+			resolved = append(resolved, p)
+		}
+		return resolved, nil
+	}
+
+	nsList, err := clientset.CoreV1().Namespaces().List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("error listing namespaces: %w", err)
+	}
+	for _, p := range patterns {
+		if !patternHasGlob(p) {
+			found := false
+			for i := range nsList.Items {
+				if nsList.Items[i].Name == p {
+					found = true
+					break
+				}
+			}
+			if !found {
+				return nil, fmt.Errorf("namespace %q not found", p)
+			}
+			if _, ok := seen[p]; !ok {
+				seen[p] = struct{}{}
+				resolved = append(resolved, p)
+			}
+			continue
+		}
+		for i := range nsList.Items {
+			name := nsList.Items[i].Name
+			ok, err := path.Match(p, name)
+			if err != nil {
+				return nil, fmt.Errorf("invalid namespace pattern %q: %w", p, err)
+			}
+			if !ok {
+				continue
+			}
+			if _, dup := seen[name]; dup {
+				continue
+			}
+			seen[name] = struct{}{}
+			resolved = append(resolved, name)
+		}
+	}
+	if len(resolved) == 0 {
+		return nil, fmt.Errorf("no namespace matches patterns %v", patterns)
+	}
+	slices.Sort(resolved)
+	return resolved, nil
 }
 
 var resourcesToSkip = []string{
@@ -185,8 +294,13 @@ func RunCheckAllConditions(ctx context.Context, config *restclient.Config, args 
 		name = " (" + name + ")"
 	}
 	scope := " in all namespaces"
-	if args.Namespace != "" {
-		scope = fmt.Sprintf(" in namespace %s", args.Namespace)
+	switch len(args.Namespaces) {
+	case 0:
+		// no filter
+	case 1:
+		scope = fmt.Sprintf(" in namespace %s", args.Namespaces[0])
+	default:
+		scope = fmt.Sprintf(" in namespaces %s", strings.Join(args.Namespaces, ","))
 	}
 	fmt.Printf("Checked %d conditions of %d resources of %d types%s. Duration: %s%s\n",
 		counter.CheckedConditions, counter.CheckedResources, counter.CheckedResourceTypes, scope, time.Since(counter.StartTime).Round(time.Millisecond), name)
@@ -209,9 +323,14 @@ func RunAndGetCounter(ctx context.Context, config *restclient.Config, args *Argu
 		return counter, fmt.Errorf("error creating clientset: %w", err)
 	}
 
-	if args.Namespace != "" {
-		if _, err := clientset.CoreV1().Namespaces().Get(ctx, args.Namespace, metav1.GetOptions{}); err != nil {
-			return counter, fmt.Errorf("namespace %q not found", args.Namespace)
+	if args.namespaceFilterActive() {
+		// Resolve once per run; subsequent retries reuse the resolved list.
+		if len(args.Namespaces) == 0 {
+			resolved, err := resolveNamespacePatterns(ctx, clientset, args.NamespacePatterns)
+			if err != nil {
+				return counter, err
+			}
+			args.Namespaces = resolved
 		}
 	}
 
@@ -270,7 +389,7 @@ func createJobs(serverResources []*metav1.APIResourceList, jobs chan handleResou
 		}
 		for i := range resourceList.APIResources {
 			namespaced := resourceList.APIResources[i].Namespaced
-			if args.Namespace != "" && !namespaced {
+			if args.namespaceFilterActive() && !namespaced {
 				continue
 			}
 			jobs <- handleResourceTypeInput{
@@ -308,7 +427,19 @@ func containsSlash(s string) bool {
 func printResources(args *Arguments, list *unstructured.UnstructuredList, gvr schema.GroupVersionResource,
 	counter *handleResourceTypeOutput, workerID int32,
 ) (lines []string, again bool) {
+	// When the user supplied multiple namespaces (or globs), we list the
+	// resources cluster-wide and drop the ones not in the resolved set.
+	// A single namespace is already filtered server-side.
+	var nsFilter map[string]struct{}
+	if len(args.Namespaces) > 1 {
+		nsFilter = args.namespaceSet()
+	}
 	for _, obj := range list.Items {
+		if nsFilter != nil {
+			if _, ok := nsFilter[obj.GetNamespace()]; !ok {
+				continue
+			}
+		}
 		counter.checkedResources++
 		var conditions []interface{}
 		var err error
@@ -698,15 +829,17 @@ func handleResourceType(ctx context.Context, input handleResourceTypeInput) hand
 
 	output.checkedResourceTypes++
 
-	if args.Namespace != "" && !input.namespaced {
+	if args.namespaceFilterActive() && !input.namespaced {
 		return output
 	}
 
 	namespaceable := dynClient.Resource(gvr)
 	var resourceInterface dynamic.ResourceInterface
 	if input.namespaced {
-		if args.Namespace != "" {
-			resourceInterface = namespaceable.Namespace(args.Namespace)
+		// One namespace: filter on the server. Multiple namespaces or globs:
+		// list cluster-wide and filter results client-side in printResources.
+		if len(args.Namespaces) == 1 {
+			resourceInterface = namespaceable.Namespace(args.Namespaces[0])
 		} else {
 			resourceInterface = namespaceable.Namespace(metav1.NamespaceAll)
 		}
