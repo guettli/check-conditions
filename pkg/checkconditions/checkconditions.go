@@ -179,6 +179,7 @@ type Counter struct {
 	StartTime            time.Time
 	WhileRegexDidMatch   bool
 	Lines                []string
+	ForbiddenResources   []string
 }
 
 func (c *Counter) add(o handleResourceTypeOutput) {
@@ -186,6 +187,9 @@ func (c *Counter) add(o handleResourceTypeOutput) {
 	c.CheckedConditions += o.checkedConditions
 	c.CheckedResourceTypes += o.checkedResourceTypes
 	c.Lines = append(c.Lines, o.lines...)
+	if o.forbiddenResource != "" {
+		c.ForbiddenResources = append(c.ForbiddenResources, o.forbiddenResource)
+	}
 	if o.whileRegexDidMatch {
 		c.WhileRegexDidMatch = true
 	}
@@ -305,6 +309,19 @@ func RunCheckAllConditions(ctx context.Context, config *restclient.Config, args 
 
 	for _, line := range counter.Lines {
 		fmt.Println(line)
+	}
+	if len(counter.ForbiddenResources) > 0 {
+		seen := map[string]struct{}{}
+		uniq := make([]string, 0, len(counter.ForbiddenResources))
+		for _, r := range counter.ForbiddenResources {
+			if _, ok := seen[r]; ok {
+				continue
+			}
+			seen[r] = struct{}{}
+			uniq = append(uniq, r)
+		}
+		slices.Sort(uniq)
+		fmt.Printf("Skipped %d forbidden resource types: %s\n", len(uniq), strings.Join(uniq, ", "))
 	}
 	name := args.Name
 	if name != "" {
@@ -835,6 +852,9 @@ type handleResourceTypeOutput struct {
 	checkedConditions    int32
 	whileRegexDidMatch   bool
 	lines                []string
+	// forbiddenResource is the resource name when listing was rejected with a
+	// 403 Forbidden. Aggregated by the caller into a single summary line.
+	forbiddenResource string
 }
 
 func handleResourceType(ctx context.Context, input handleResourceTypeInput) handleResourceTypeOutput {
@@ -851,8 +871,6 @@ func handleResourceType(ctx context.Context, input handleResourceTypeInput) hand
 	if slices.Contains(resourcesToSkip, name) {
 		return output
 	}
-
-	output.checkedResourceTypes++
 
 	if args.namespaceFilterActive() && !input.namespaced {
 		return output
@@ -878,11 +896,16 @@ func handleResourceType(ctx context.Context, input handleResourceTypeInput) hand
 
 	list, err := resourceInterface.List(ctx, metav1.ListOptions{})
 	if err != nil {
+		if apierrors.IsForbidden(err) {
+			output.forbiddenResource = name
+			return output
+		}
 		fmt.Printf("..Error listing %s: %v. group %q version %q resource %q\n", name, err,
 			gvr.Group, gvr.Version, gvr.Resource)
 		return output
 	}
 
+	output.checkedResourceTypes++
 	lines, again := printResources(args, list, gvr, &output, input.workerID)
 	output.whileRegexDidMatch = again
 	output.lines = lines
