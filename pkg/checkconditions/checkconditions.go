@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"golang.org/x/exp/slices"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -108,13 +109,12 @@ func resolveNamespacePatterns(ctx context.Context, clientset *kubernetes.Clients
 	var resolved []string
 
 	if !hasGlob {
-		// Verify each exact namespace exists.
+		// Trust the user-supplied names. Verifying existence here would
+		// require cluster-scoped get/list permission on namespaces, which
+		// namespace-scoped service accounts don't have.
 		for _, p := range patterns {
 			if _, ok := seen[p]; ok {
 				continue
-			}
-			if _, err := clientset.CoreV1().Namespaces().Get(ctx, p, metav1.GetOptions{}); err != nil {
-				return nil, fmt.Errorf("namespace %q not found", p)
 			}
 			seen[p] = struct{}{}
 			resolved = append(resolved, p)
@@ -124,20 +124,13 @@ func resolveNamespacePatterns(ctx context.Context, clientset *kubernetes.Clients
 
 	nsList, err := clientset.CoreV1().Namespaces().List(ctx, metav1.ListOptions{})
 	if err != nil {
+		if apierrors.IsForbidden(err) {
+			return nil, fmt.Errorf("cannot expand glob patterns %v: listing namespaces is not allowed for this user; use exact namespace names instead", patterns)
+		}
 		return nil, fmt.Errorf("error listing namespaces: %w", err)
 	}
 	for _, p := range patterns {
 		if !patternHasGlob(p) {
-			found := false
-			for i := range nsList.Items {
-				if nsList.Items[i].Name == p {
-					found = true
-					break
-				}
-			}
-			if !found {
-				return nil, fmt.Errorf("namespace %q not found", p)
-			}
 			if _, ok := seen[p]; !ok {
 				seen[p] = struct{}{}
 				resolved = append(resolved, p)
