@@ -815,7 +815,7 @@ func conditionTypeHasNegativeMeaning(resource string, ct string) bool {
 	}
 
 	for _, suffix := range []string{
-		"Unavailable", "Pressure", "Dangling", "Unhealthy", "Paused", "Deleting",
+		"Unavailable", "Pressure", "Dangling", "Unhealthy", "Paused", "Deleting", "Failed",
 	} {
 		if strings.HasSuffix(ct, suffix) {
 			return true
