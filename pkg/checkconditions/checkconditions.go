@@ -675,6 +675,9 @@ var conditionTypesOfResourceWithPositiveMeaning = map[string][]string{
 		"RequiredPackages",    // Longhorn
 		"KernelModulesLoaded", // Longhorn
 	},
+	"machines": {
+		"NodeKubeadmLabelsAndTaintsSet",
+	},
 	"autopilotclusters": {
 		"ClusterRunning",
 	},
@@ -716,6 +719,9 @@ var conditionTypesOfResourceWithNegativeMeaning = map[string][]string{
 		"ScalingDown",
 		"ScalingUp",
 		"Remediating",
+	},
+	"machines": {
+		"Updating",
 	},
 }
 
