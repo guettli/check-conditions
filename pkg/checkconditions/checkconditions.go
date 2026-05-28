@@ -43,6 +43,7 @@ type Arguments struct {
 	RetryCount               int16
 	RetryForEver             bool
 	Timeout                  time.Duration
+	forbiddenResourcesPrinted bool
 }
 
 // matchAnyPattern reports whether name matches any of the given glob patterns.
@@ -310,7 +311,7 @@ func RunCheckAllConditions(ctx context.Context, config *restclient.Config, args 
 	for _, line := range counter.Lines {
 		fmt.Println(line)
 	}
-	if len(counter.ForbiddenResources) > 0 {
+	if len(counter.ForbiddenResources) > 0 && !args.forbiddenResourcesPrinted {
 		seen := map[string]struct{}{}
 		uniq := make([]string, 0, len(counter.ForbiddenResources))
 		for _, r := range counter.ForbiddenResources {
@@ -322,6 +323,7 @@ func RunCheckAllConditions(ctx context.Context, config *restclient.Config, args 
 		}
 		slices.Sort(uniq)
 		fmt.Printf("Skipped %d forbidden resource types: %s\n", len(uniq), strings.Join(uniq, ", "))
+		args.forbiddenResourcesPrinted = true
 	}
 	name := args.Name
 	if name != "" {
