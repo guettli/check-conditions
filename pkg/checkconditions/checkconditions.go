@@ -683,6 +683,9 @@ var conditionTypesOfResourceWithPositiveMeaning = map[string][]string{
 	"autopilotclusters": {
 		"ClusterRunning",
 	},
+	"applicationsets": {
+		"ParametersGenerated",
+	},
 }
 
 var conditionTypesOfResourceWithNegativeMeaning = map[string][]string{
@@ -724,6 +727,9 @@ var conditionTypesOfResourceWithNegativeMeaning = map[string][]string{
 	},
 	"machines": {
 		"Updating",
+	},
+	"applicationsets": {
+		"ErrorOccurred",
 	},
 }
 
