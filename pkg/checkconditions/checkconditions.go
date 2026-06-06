@@ -799,6 +799,7 @@ func conditionTypeHasPositiveMeaning(resource string, ct string) bool {
 		"RunningDesiredVersion", // elasticsearches
 		"ready",                 // perconaservermongodbs
 		"sharding",              // perconaservermongodbs
+		"Conformant",            // customresourcedefinitions KubernetesAPIApprovalPolicyConformant
 		"NoWarnings",            // rabbitmqclusters
 		"ReconcileSuccess",      // rabbitmqclusters
 	} {
