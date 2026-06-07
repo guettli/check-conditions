@@ -676,6 +676,7 @@ var conditionTypesOfResourceWithPositiveMeaning = map[string][]string{
 		"MountPropagation",    // Longhorn
 		"RequiredPackages",    // Longhorn
 		"KernelModulesLoaded", // Longhorn
+		"EtcdIsVoter",
 	},
 	"machines": {
 		"NodeKubeadmLabelsAndTaintsSet",
@@ -759,9 +760,6 @@ var conditionLinesToIgnoreRegexs = []*regexp.Regexp{
 
 	// perconaxtradbclusters
 	regexp.MustCompile(`perconaxtradbclusters tls=enabled`),
-
-	// nodes
-	regexp.MustCompile(`nodes EtcdIsVoter=True MemberNotLearner "Node is a voting member`),
 }
 
 func conditionTypeHasPositiveMeaning(resource string, ct string) bool {
