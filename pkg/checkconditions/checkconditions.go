@@ -761,7 +761,7 @@ var conditionLinesToIgnoreRegexs = []*regexp.Regexp{
 	regexp.MustCompile(`perconaxtradbclusters tls=enabled`),
 
 	// nodes
-	regexp.MustCompile(`nodes EtcdIsVoter=True MemberNotLearner "Node is a voting member"`),
+	regexp.MustCompile(`nodes EtcdIsVoter=True MemberNotLearner "Node is a voting member`),
 }
 
 func conditionTypeHasPositiveMeaning(resource string, ct string) bool {
