@@ -47,6 +47,8 @@ var arguments = checkconditions.Arguments{}
 
 func init() {
 	arguments.ProgrammStartTime = time.Now()
+	rootCmd.Long = "check-conditions " + buildVersion() + "\n\n" + rootCmd.Long
+
 
 	rootCmd.PersistentFlags().BoolVarP(&arguments.Verbose, "verbose", "v", false, "Create more output")
 
