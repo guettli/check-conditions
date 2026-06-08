@@ -7,6 +7,10 @@ on:
     # Every 6 hours — catches unreleased commits if push event was missed
     - cron: '0 */6 * * *'
 
+concurrency:
+  group: auto-release
+  cancel-in-progress: false
+
 permissions:
   contents: write
 
