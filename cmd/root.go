@@ -2,15 +2,25 @@ package cmd
 
 import (
 	"os"
+	"runtime/debug"
 	"time"
 
 	"github.com/guettli/check-conditions/pkg/checkconditions"
 	"github.com/spf13/cobra"
 )
 
+func buildVersion() string {
+	info, ok := debug.ReadBuildInfo()
+	if !ok || info.Main.Version == "" || info.Main.Version == "(devel)" {
+		return "dev"
+	}
+	return info.Main.Version
+}
+
 var rootCmd = &cobra.Command{
-	Use:   "check-conditions",
-	Short: "Check your cluster by looking at status.conditions of the resources",
+	Use:     "check-conditions",
+	Version: buildVersion(),
+	Short:   "Check your cluster by looking at status.conditions of the resources",
 	Long: `Check your cluster by looking at status.conditions of the resources
 
 Output is usualy:

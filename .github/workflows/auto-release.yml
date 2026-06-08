@@ -59,10 +59,23 @@ jobs:
             echo "new_tag=$NEW_TAG" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Push tag
+        if: steps.check.outputs.new_release == 'true'
+        run: |
+          NEW_TAG="${{ steps.check.outputs.new_tag }}"
+          # Skip if the tag already exists locally (recovery: tag was pushed in a prior failed run)
+          if git tag --list "$NEW_TAG" | grep -q .; then
+            echo "Tag $NEW_TAG already exists, skipping push"
+          else
+            git tag "$NEW_TAG"
+            git push origin "$NEW_TAG"
+          fi
+
       - name: Build binaries
         if: steps.check.outputs.new_release == 'true'
         run: |
           mkdir -p dist
+          # HEAD is now at the release tag — Go 1.24 embeds the version automatically
           GOOS=linux   GOARCH=amd64 go build -trimpath -o dist/check-conditions-linux-amd64   .
           GOOS=linux   GOARCH=arm64 go build -trimpath -o dist/check-conditions-linux-arm64   .
           GOOS=darwin  GOARCH=amd64 go build -trimpath -o dist/check-conditions-darwin-amd64  .
@@ -73,13 +86,12 @@ jobs:
         if: steps.check.outputs.new_release == 'true'
         run: sha256sum dist/* > dist/checksums.txt
 
-      - name: Create release
+      - name: Create GitHub Release
         if: steps.check.outputs.new_release == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "${{ steps.check.outputs.new_tag }}" \
-            --target "${{ github.sha }}" \
             --title "${{ steps.check.outputs.new_tag }}" \
             --generate-notes \
             dist/*
