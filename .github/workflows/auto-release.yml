@@ -4,19 +4,18 @@ on:
   push:
     branches: [main]
   schedule:
-    # Every 6 hours — catches direct pushes that may have bypassed the push event
+    # Every 6 hours — catches unreleased commits if push event was missed
     - cron: '0 */6 * * *'
 
 permissions:
   contents: write
 
 jobs:
-  auto-tag:
+  release:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          # Full history needed for git describe
           fetch-depth: 0
 
       - uses: actions/setup-go@v5
@@ -33,19 +32,36 @@ jobs:
         id: check
         run: |
           if git describe --exact-match HEAD 2>/dev/null; then
-            echo "tagged=true" >> "$GITHUB_OUTPUT"
+            echo "new_release=false" >> "$GITHUB_OUTPUT"
           else
-            echo "tagged=false" >> "$GITHUB_OUTPUT"
+            LATEST=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || echo 'v0.0.0')
+            MAJOR=$(echo "$LATEST" | cut -d. -f1 | tr -d 'v')
+            MINOR=$(echo "$LATEST" | cut -d. -f2)
+            PATCH=$(echo "$LATEST" | cut -d. -f3)
+            NEW_TAG="v${MAJOR}.${MINOR}.$((PATCH + 1))"
+            echo "new_release=true" >> "$GITHUB_OUTPUT"
+            echo "new_tag=$NEW_TAG" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Bump patch version and push tag
-        if: steps.check.outputs.tagged == 'false'
+      - name: Build binaries
+        if: steps.check.outputs.new_release == 'true'
         run: |
-          LATEST=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || echo 'v0.0.0')
-          MAJOR=$(echo "$LATEST" | cut -d. -f1 | tr -d 'v')
-          MINOR=$(echo "$LATEST" | cut -d. -f2)
-          PATCH=$(echo "$LATEST" | cut -d. -f3)
-          NEW_TAG="v${MAJOR}.${MINOR}.$((PATCH + 1))"
-          echo "Latest tag: $LATEST — creating $NEW_TAG"
+          mkdir -p dist
+          GOOS=linux   GOARCH=amd64 go build -trimpath -o dist/check-conditions-linux-amd64   .
+          GOOS=linux   GOARCH=arm64 go build -trimpath -o dist/check-conditions-linux-arm64   .
+          GOOS=darwin  GOARCH=amd64 go build -trimpath -o dist/check-conditions-darwin-amd64  .
+          GOOS=darwin  GOARCH=arm64 go build -trimpath -o dist/check-conditions-darwin-arm64  .
+          GOOS=windows GOARCH=amd64 go build -trimpath -o dist/check-conditions-windows-amd64.exe .
+
+      - name: Tag and publish release
+        if: steps.check.outputs.new_release == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NEW_TAG: ${{ steps.check.outputs.new_tag }}
+        run: |
           git tag "$NEW_TAG"
           git push origin "$NEW_TAG"
+          gh release create "$NEW_TAG" \
+            --title "$NEW_TAG" \
+            --generate-notes \
+            dist/*
