@@ -51,4 +51,6 @@ func init() {
 	rootCmd.PersistentFlags().StringSliceVar(&arguments.ExcludeNamespacePatterns, "exclude-namespace", nil, "Skip the given namespaces. Accepts a comma-separated list. Glob patterns (*, ?, [...]) are supported. Combine with -n to subtract: -n 'foo-*' --exclude-namespace foo-bar checks every foo-* namespace except foo-bar.")
 
 	rootCmd.PersistentFlags().Int16VarP(&arguments.RetryCount, "retry-count", "", 5, "Network errors: How many times to retry the command before giving up. This applies only to the first connection. As soon as a successful connection is made, the command will retry forever. Set to zero to also retry the first connection forever.")
+
+	rootCmd.PersistentFlags().DurationVar(&arguments.WarnDeletionTimestampOlderThan, "warn-deletion-older-than", 10*time.Minute, "Warn about resources whose deletionTimestamp is older than this duration. Set to 0 to disable.")
 }
