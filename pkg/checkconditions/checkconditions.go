@@ -43,7 +43,10 @@ type Arguments struct {
 	RetryCount               int16
 	RetryForEver             bool
 	Timeout                  time.Duration
-	forbiddenResourcesPrinted bool
+	// WarnDeletionTimestampOlderThan warns about resources whose deletionTimestamp
+	// is older than this duration. Set to 0 to disable.
+	WarnDeletionTimestampOlderThan time.Duration
+	forbiddenResourcesPrinted      bool
 }
 
 // matchAnyPattern reports whether name matches any of the given glob patterns.
@@ -485,6 +488,16 @@ func printResources(args *Arguments, list *unstructured.UnstructuredList, gvr sc
 			continue
 		}
 		counter.checkedResources++
+		if args.WarnDeletionTimestampOlderThan > 0 {
+			if dt := obj.GetDeletionTimestamp(); dt != nil && !dt.IsZero() {
+				age := time.Since(dt.Time)
+				if age > args.WarnDeletionTimestampOlderThan {
+					line := fmt.Sprintf("  %s %s %s DeletionTimestamp set for %s",
+						obj.GetNamespace(), gvr.Resource, obj.GetName(), age.Round(time.Second))
+					lines = append(lines, line)
+				}
+			}
+		}
 		var conditions []interface{}
 		var err error
 		if gvr.Resource == "hetznerbaremetalhosts" {

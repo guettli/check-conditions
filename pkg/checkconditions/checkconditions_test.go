@@ -1,8 +1,12 @@
 package checkconditions
 
 import (
+	"strings"
 	"testing"
+	"time"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
@@ -35,5 +39,75 @@ func TestHandleConditionSkipsHealthyMachineConditions(t *testing.T) {
 	}
 	if counter.checkedConditions != int32(len(tests)) {
 		t.Fatalf("expected %d checked conditions, got %d", len(tests), counter.checkedConditions)
+	}
+}
+
+func TestPrintResourcesWarnsDeletionTimestamp(t *testing.T) {
+	gvr := schema.GroupVersionResource{Resource: "pods"}
+	args := &Arguments{
+		WarnDeletionTimestampOlderThan: 10 * time.Minute,
+	}
+
+	oldTime := metav1.NewTime(time.Now().Add(-15 * time.Minute))
+	obj := unstructured.Unstructured{}
+	obj.SetName("stuck-pod")
+	obj.SetNamespace("default")
+	obj.SetDeletionTimestamp(&oldTime)
+
+	list := &unstructured.UnstructuredList{Items: []unstructured.Unstructured{obj}}
+	counter := &handleResourceTypeOutput{}
+	lines, _ := printResources(args, list, gvr, counter, 0)
+
+	if len(lines) == 0 {
+		t.Fatal("expected a warning line for old deletionTimestamp, got none")
+	}
+	if !strings.Contains(lines[0], "DeletionTimestamp") {
+		t.Errorf("expected line to mention DeletionTimestamp, got: %s", lines[0])
+	}
+}
+
+func TestPrintResourcesNoWarnRecentDeletionTimestamp(t *testing.T) {
+	gvr := schema.GroupVersionResource{Resource: "pods"}
+	args := &Arguments{
+		WarnDeletionTimestampOlderThan: 10 * time.Minute,
+	}
+
+	recentTime := metav1.NewTime(time.Now().Add(-1 * time.Minute))
+	obj := unstructured.Unstructured{}
+	obj.SetName("deleting-pod")
+	obj.SetNamespace("default")
+	obj.SetDeletionTimestamp(&recentTime)
+
+	list := &unstructured.UnstructuredList{Items: []unstructured.Unstructured{obj}}
+	counter := &handleResourceTypeOutput{}
+	lines, _ := printResources(args, list, gvr, counter, 0)
+
+	for _, l := range lines {
+		if strings.Contains(l, "DeletionTimestamp") {
+			t.Errorf("expected no warning for recent deletionTimestamp, got: %s", l)
+		}
+	}
+}
+
+func TestPrintResourcesDisabledDeletionTimestampCheck(t *testing.T) {
+	gvr := schema.GroupVersionResource{Resource: "pods"}
+	args := &Arguments{
+		WarnDeletionTimestampOlderThan: 0, // disabled
+	}
+
+	oldTime := metav1.NewTime(time.Now().Add(-1 * time.Hour))
+	obj := unstructured.Unstructured{}
+	obj.SetName("old-pod")
+	obj.SetNamespace("default")
+	obj.SetDeletionTimestamp(&oldTime)
+
+	list := &unstructured.UnstructuredList{Items: []unstructured.Unstructured{obj}}
+	counter := &handleResourceTypeOutput{}
+	lines, _ := printResources(args, list, gvr, counter, 0)
+
+	for _, l := range lines {
+		if strings.Contains(l, "DeletionTimestamp") {
+			t.Errorf("expected no warning when check is disabled, got: %s", l)
+		}
 	}
 }
