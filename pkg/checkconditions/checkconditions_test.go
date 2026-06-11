@@ -42,6 +42,38 @@ func TestHandleConditionSkipsHealthyMachineConditions(t *testing.T) {
 	}
 }
 
+func TestPrintConditionsMergesDuplicateReasonMessage(t *testing.T) {
+	gvr := schema.GroupVersionResource{Resource: "jobs"}
+	args := &Arguments{}
+	obj := unstructured.Unstructured{}
+	obj.SetName("my-job")
+	obj.SetNamespace("agentloop")
+
+	conditions := []interface{}{
+		map[string]interface{}{
+			"type":    "Failed",
+			"status":  "True",
+			"reason":  "BackoffLimitExceeded",
+			"message": "Job has reached the specified backoff limit",
+		},
+		map[string]interface{}{
+			"type":    "FailureTarget",
+			"status":  "True",
+			"reason":  "BackoffLimitExceeded",
+			"message": "Job has reached the specified backoff limit",
+		},
+	}
+	counter := &handleResourceTypeOutput{}
+	lines, _ := printConditions(args, conditions, counter, gvr, obj)
+
+	if len(lines) != 1 {
+		t.Fatalf("expected 1 merged line, got %d: %v", len(lines), lines)
+	}
+	if !strings.Contains(lines[0], "Failed/FailureTarget=True") {
+		t.Errorf("expected merged condition types in output, got: %s", lines[0])
+	}
+}
+
 func TestPrintResourcesWarnsDeletionTimestamp(t *testing.T) {
 	gvr := schema.GroupVersionResource{Resource: "pods"}
 	args := &Arguments{
