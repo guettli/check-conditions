@@ -182,6 +182,7 @@ var resourcesToSkip = []schema.GroupResource{
 	{Group: "authorization.k8s.io", Resource: "selfsubjectreviews"},
 	{Group: "authorization.k8s.io", Resource: "selfsubjectrulesreviews"},
 	{Group: "authorization.k8s.io", Resource: "subjectaccessreviews"},
+	{Group: "authentication.k8s.io", Resource: "selfsubjectreviews"},
 	{Group: "authentication.k8s.io", Resource: "tokenreviews"},
 	{Group: "batch", Resource: "cronjobs"}, // CronJobStatus has no conditions field
 }
