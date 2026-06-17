@@ -728,6 +728,7 @@ var conditionTypesOfResourceWithPositiveMeaning = map[string][]string{
 		"NodeBootIDRetrieved",
 	},
 	"clusters": {
+		"ConsistentSystemID",    // postgresql.cnpg.io/v1
 		"ContinuousArchiving",   // postgresql.cnpg.io/v1
 		"RemoteConnectionProbe", // capi
 	},
