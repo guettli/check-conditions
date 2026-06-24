@@ -505,7 +505,12 @@ func printResources(args *Arguments, list *unstructured.UnstructuredList, gvr sc
 				if age > args.WarnDeletionTimestampOlderThan {
 					line := fmt.Sprintf("  %s %s %s DeletionTimestamp set for %s",
 						obj.GetNamespace(), gvr.Resource, obj.GetName(), age.Round(time.Second))
-					lines = append(lines, line)
+					if args.WhileRegex == nil || args.WhileRegex.MatchString(line) {
+						if args.WhileRegex != nil {
+							again = true
+						}
+						lines = append(lines, line)
+					}
 				}
 			}
 		}
