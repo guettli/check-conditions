@@ -744,6 +744,9 @@ var conditionTypesOfResourceWithPositiveMeaning = map[string][]string{
 	"engineimages": { // Longhorn
 		"ready",
 	},
+	"gitrepositories": { // source.toolkit.fluxcd.io/v1
+		"ArtifactInStorage",
+	},
 	"nodes": {
 		"Schedulable",         // Longhorn
 		"MountPropagation",    // Longhorn
