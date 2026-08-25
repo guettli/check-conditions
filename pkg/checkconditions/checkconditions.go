@@ -747,6 +747,9 @@ var conditionTypesOfResourceWithPositiveMeaning = map[string][]string{
 	"gitrepositories": { // source.toolkit.fluxcd.io/v1
 		"ArtifactInStorage",
 	},
+	"pods": {
+		"mysql.oracle.com/configured", // mysql-operator
+	},
 	"nodes": {
 		"Schedulable",         // Longhorn
 		"MountPropagation",    // Longhorn
@@ -851,6 +854,7 @@ func conditionTypeHasPositiveMeaning(resource string, ct string) bool {
 		"Built",
 		"Complete",
 		"Created",
+		"Deployed",
 		"Downloaded",
 		"Established",
 		"Healthy",
@@ -990,6 +994,11 @@ func handleResourceType(ctx context.Context, input handleResourceTypeInput) hand
 	if err != nil {
 		if apierrors.IsForbidden(err) {
 			output.forbiddenResource = name
+			return output
+		}
+		if apierrors.IsMethodNotSupported(err) {
+			// Some resources (for example webhook backed ones) cannot be listed.
+			// There is nothing to check, so stay quiet.
 			return output
 		}
 		fmt.Printf("..Error listing %s: %v. group %q version %q resource %q\n", name, err,
