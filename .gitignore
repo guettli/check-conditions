@@ -2,3 +2,4 @@
 *kubeconfig.yaml
 tmp
 *.kubeconfig
+.vscode
