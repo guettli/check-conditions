@@ -187,6 +187,23 @@ var resourcesToSkip = []schema.GroupResource{
 	{Group: "batch", Resource: "cronjobs"}, // CronJobStatus has no conditions field
 }
 
+// conditionsPathOverrides maps a resource (by its lower-case plural name) to
+// the location of its conditions slice, for the rare resources that do not
+// follow the status.conditions convention. See issue #25.
+var conditionsPathOverrides = map[string][]string{
+	// For some reasons this resource stores the conditions differently.
+	"hetznerbaremetalhosts": {"spec", "status", "conditions"},
+}
+
+// conditionsPath returns the JSON path to the conditions slice for a resource.
+// It defaults to status.conditions unless the resource has an override.
+func conditionsPath(resource string) []string {
+	if path, ok := conditionsPathOverrides[resource]; ok {
+		return path
+	}
+	return []string{"status", "conditions"}
+}
+
 type Counter struct {
 	CheckedResources     int32
 	CheckedConditions    int32
@@ -516,12 +533,10 @@ func printResources(args *Arguments, list *unstructured.UnstructuredList, gvr sc
 		}
 		var conditions []interface{}
 		var err error
-		if gvr.Resource == "hetznerbaremetalhosts" {
-			// For some reasons this resource stores the conditions differently
-			conditions, _, err = unstructured.NestedSlice(obj.Object, "spec", "status", "conditions")
-		} else {
-			conditions, _, err = unstructured.NestedSlice(obj.Object, "status", "conditions")
-		}
+		// Most resources keep their conditions at status.conditions. A few
+		// resources place them elsewhere; see conditionsPathOverrides.
+		path := conditionsPath(gvr.Resource)
+		conditions, _, err = unstructured.NestedSlice(obj.Object, path...)
 		if err != nil {
 			if strings.Contains(err.Error(), "<nil> is of the type <nil>") {
 				// If we read the manifest before the controller created conditions, then

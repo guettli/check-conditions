@@ -20,4 +20,4 @@ jobs:
         run: go test ./...
 
       - name: Lint
-        run: go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest run
+        run: go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2 run
