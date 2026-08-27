@@ -839,6 +839,9 @@ var conditionLinesToIgnoreRegexs = []*regexp.Regexp{
 
 	// perconaxtradbclusters
 	regexp.MustCompile(`perconaxtradbclusters tls=enabled`),
+
+	// liqo
+	regexp.MustCompile(`foreignclusters APIServerStatus=Established`),
 }
 
 func conditionTypeHasPositiveMeaning(resource string, ct string) bool {
