@@ -42,6 +42,32 @@ func TestHandleConditionSkipsHealthyMachineConditions(t *testing.T) {
 	}
 }
 
+func TestHandleConditionSkipsHealthyForeignClusterConditions(t *testing.T) {
+	gvr := schema.GroupVersionResource{Resource: "foreignclusters"}
+	counter := &handleResourceTypeOutput{}
+
+	tests := []map[string]interface{}{
+		{
+			"type":    "APIServerStatus",
+			"status":  "Established",
+			"reason":  "APIServerReady",
+			"message": "The foreign cluster API Server is ready",
+		},
+	}
+
+	var rows []conditionRow
+	for _, condition := range tests {
+		rows = handleCondition(condition, counter, gvr, rows)
+	}
+
+	if len(rows) != 0 {
+		t.Fatalf("expected healthy foreign cluster conditions to be suppressed, got %d rows", len(rows))
+	}
+	if counter.checkedConditions != int32(len(tests)) {
+		t.Fatalf("expected %d checked conditions, got %d", len(tests), counter.checkedConditions)
+	}
+}
+
 func TestPrintConditionsMergesDuplicateReasonMessage(t *testing.T) {
 	gvr := schema.GroupVersionResource{Resource: "jobs"}
 	args := &Arguments{}
