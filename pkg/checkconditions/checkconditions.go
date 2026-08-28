@@ -47,6 +47,7 @@ type Arguments struct {
 	// is older than this duration. Set to 0 to disable.
 	WarnDeletionTimestampOlderThan time.Duration
 	forbiddenResourcesPrinted      bool
+	connectionInfoPrinted          bool
 }
 
 // matchAnyPattern reports whether name matches any of the given glob patterns.
@@ -227,7 +228,53 @@ func RunAllOnce(ctx context.Context, args *Arguments) (bool, error) {
 	// to wait for getting results from an api-server running at localhost
 	config.QPS = 1000
 	config.Burst = 1000
+
+	// Print the connected cluster and where the kubeconfig comes from once per
+	// invocation. The while/forever loops call RunAllOnce repeatedly, so guard
+	// against printing this block on every iteration.
+	if !args.connectionInfoPrinted {
+		printConnectionInfo(kubeconfig, loadingRules, config)
+		args.connectionInfoPrinted = true
+	}
+
 	return RunCheckAllConditions(ctx, config, args)
+}
+
+// printConnectionInfo prints the connected cluster (server URL and kube-context),
+// the current time and where the kubeconfig was loaded from.
+func printConnectionInfo(kubeconfig clientcmd.ClientConfig, loadingRules *clientcmd.ClientConfigLoadingRules, config *restclient.Config) {
+	server := config.Host
+	contextName := ""
+	if rawConfig, err := kubeconfig.RawConfig(); err == nil {
+		contextName = rawConfig.CurrentContext
+		if cluster, ok := rawConfig.Clusters[rawConfig.Contexts[contextName].Cluster]; ok && cluster.Server != "" {
+			server = cluster.Server
+		}
+	}
+	if contextName != "" {
+		fmt.Printf("Cluster:    %s (context %q)\n", server, contextName)
+	} else {
+		fmt.Printf("Cluster:    %s\n", server)
+	}
+	fmt.Printf("Kubeconfig: %s\n", kubeconfigSource(loadingRules))
+	fmt.Printf("Time:       %s\n\n", time.Now().Format("2006-01-02 15:04:05 -0700 MST"))
+}
+
+// kubeconfigSource returns a human readable description of where the kubeconfig
+// was loaded from.
+func kubeconfigSource(loadingRules *clientcmd.ClientConfigLoadingRules) string {
+	if loadingRules.ExplicitPath != "" {
+		return loadingRules.ExplicitPath
+	}
+	files := loadingRules.GetLoadingPrecedence()
+	if len(files) == 0 {
+		return "unknown"
+	}
+	source := strings.Join(files, string(os.PathListSeparator))
+	if os.Getenv(clientcmd.RecommendedConfigPathEnvVar) != "" {
+		source += " (from $" + clientcmd.RecommendedConfigPathEnvVar + ")"
+	}
+	return source
 }
 
 func RunForever(ctx context.Context, args *Arguments) error {
