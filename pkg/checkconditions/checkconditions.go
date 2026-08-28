@@ -671,8 +671,15 @@ func printConditions(args *Arguments, conditions []interface{}, counter *handleR
 			duration = fmt.Sprint(d.Round(time.Second))
 		}
 
-		outLine := fmt.Sprintf("  %s %s %s Condition %s=%s %s %q (%s)", obj.GetNamespace(), gvr.Resource, obj.GetName(), r.conditionType, r.conditionStatus,
-			r.conditionReason, r.conditionMessage, duration)
+		detail := ""
+		if gvr.Resource == "deployments" && r.conditionReason == "MinimumReplicasUnavailable" {
+			if d := deploymentReplicaDetail(obj); d != "" {
+				detail = " " + d
+			}
+		}
+
+		outLine := fmt.Sprintf("  %s %s %s Condition %s=%s %s %q (%s)%s", obj.GetNamespace(), gvr.Resource, obj.GetName(), r.conditionType, r.conditionStatus,
+			r.conditionReason, r.conditionMessage, duration, detail)
 
 		addLine := true
 		if args.WhileRegex != nil {
@@ -680,9 +687,9 @@ func printConditions(args *Arguments, conditions []interface{}, counter *handleR
 			// Check each individual type for backward compatibility with --while regexes
 			// that match on a specific condition type name (e.g. "Failed=True").
 			for _, t := range e.types {
-				singleLine := fmt.Sprintf("  %s %s %s Condition %s=%s %s %q (%s)",
+				singleLine := fmt.Sprintf("  %s %s %s Condition %s=%s %s %q (%s)%s",
 					obj.GetNamespace(), gvr.Resource, obj.GetName(),
-					t, r.conditionStatus, r.conditionReason, r.conditionMessage, duration)
+					t, r.conditionStatus, r.conditionReason, r.conditionMessage, duration, detail)
 				if args.WhileRegex.MatchString(singleLine) {
 					again = true
 					addLine = true
@@ -701,6 +708,24 @@ func printConditions(args *Arguments, conditions []interface{}, counter *handleR
 		}
 	}
 	return lines, again
+}
+
+// deploymentReplicaDetail returns a fragment like "available 1/3" describing how many
+// replicas are available versus desired. Desired defaults to 1 when spec.replicas is absent
+// (matching Kubernetes' default), available defaults to 0. Returns "" if the numbers can't be read.
+func deploymentReplicaDetail(obj unstructured.Unstructured) string {
+	desired, found, err := unstructured.NestedInt64(obj.Object, "spec", "replicas")
+	if err != nil {
+		return ""
+	}
+	if !found {
+		desired = 1
+	}
+	available, _, err := unstructured.NestedInt64(obj.Object, "status", "availableReplicas")
+	if err != nil {
+		return ""
+	}
+	return fmt.Sprintf("available %d/%d", available, desired)
 }
 
 func handleCondition(condition interface{}, counter *handleResourceTypeOutput, gvr schema.GroupVersionResource, rows []conditionRow) []conditionRow {
