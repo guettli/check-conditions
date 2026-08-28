@@ -8,6 +8,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/tools/clientcmd"
 )
 
 func TestHandleConditionSkipsHealthyMachineConditions(t *testing.T) {
@@ -168,4 +169,30 @@ func TestPrintResourcesDisabledDeletionTimestampCheck(t *testing.T) {
 			t.Errorf("expected no warning when check is disabled, got: %s", l)
 		}
 	}
+}
+
+func TestKubeconfigSource(t *testing.T) {
+	t.Run("explicit path wins", func(t *testing.T) {
+		rules := &clientcmd.ClientConfigLoadingRules{ExplicitPath: "/tmp/explicit"}
+		if got := kubeconfigSource(rules); got != "/tmp/explicit" {
+			t.Errorf("expected explicit path, got %q", got)
+		}
+	})
+
+	t.Run("precedence list without KUBECONFIG env", func(t *testing.T) {
+		t.Setenv(clientcmd.RecommendedConfigPathEnvVar, "")
+		rules := &clientcmd.ClientConfigLoadingRules{Precedence: []string{"/home/user/.kube/config"}}
+		if got := kubeconfigSource(rules); got != "/home/user/.kube/config" {
+			t.Errorf("unexpected source %q", got)
+		}
+	})
+
+	t.Run("notes KUBECONFIG env when set", func(t *testing.T) {
+		t.Setenv(clientcmd.RecommendedConfigPathEnvVar, "/env/config")
+		rules := &clientcmd.ClientConfigLoadingRules{Precedence: []string{"/env/config"}}
+		got := kubeconfigSource(rules)
+		if !strings.Contains(got, "/env/config") || !strings.Contains(got, "$"+clientcmd.RecommendedConfigPathEnvVar) {
+			t.Errorf("expected source to note KUBECONFIG env, got %q", got)
+		}
+	})
 }
