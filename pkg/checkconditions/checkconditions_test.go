@@ -101,6 +101,89 @@ func TestPrintConditionsMergesDuplicateReasonMessage(t *testing.T) {
 	}
 }
 
+func newDeploymentWithMinimumReplicasUnavailable(desired, available *int64) unstructured.Unstructured {
+	obj := unstructured.Unstructured{}
+	obj.SetName("topolvm-controller")
+	obj.SetNamespace("topolvm-system")
+	if desired != nil {
+		_ = unstructured.SetNestedField(obj.Object, *desired, "spec", "replicas")
+	}
+	if available != nil {
+		_ = unstructured.SetNestedField(obj.Object, *available, "status", "availableReplicas")
+	}
+	return obj
+}
+
+func minimumReplicasUnavailableConditions() []interface{} {
+	return []interface{}{
+		map[string]interface{}{
+			"type":    "Available",
+			"status":  "False",
+			"reason":  "MinimumReplicasUnavailable",
+			"message": "Deployment does not have minimum availability.",
+		},
+	}
+}
+
+func TestPrintConditionsAppendsDeploymentReplicaDetail(t *testing.T) {
+	gvr := schema.GroupVersionResource{Resource: "deployments"}
+	args := &Arguments{}
+	desired, available := int64(3), int64(1)
+	obj := newDeploymentWithMinimumReplicasUnavailable(&desired, &available)
+
+	counter := &handleResourceTypeOutput{}
+	lines, _ := printConditions(args, minimumReplicasUnavailableConditions(), counter, gvr, obj)
+
+	if len(lines) != 1 {
+		t.Fatalf("expected 1 line, got %d: %v", len(lines), lines)
+	}
+	if !strings.Contains(lines[0], "available 1/3") {
+		t.Errorf("expected replica detail in output, got: %s", lines[0])
+	}
+}
+
+func TestPrintConditionsReplicaDetailMissingAvailableReplicas(t *testing.T) {
+	gvr := schema.GroupVersionResource{Resource: "deployments"}
+	args := &Arguments{}
+	desired := int64(3)
+	obj := newDeploymentWithMinimumReplicasUnavailable(&desired, nil)
+
+	counter := &handleResourceTypeOutput{}
+	lines, _ := printConditions(args, minimumReplicasUnavailableConditions(), counter, gvr, obj)
+
+	if len(lines) != 1 {
+		t.Fatalf("expected 1 line, got %d: %v", len(lines), lines)
+	}
+	if !strings.Contains(lines[0], "available 0/3") {
+		t.Errorf("expected available 0/3 when availableReplicas absent, got: %s", lines[0])
+	}
+}
+
+func TestPrintConditionsNoReplicaDetailForOtherReason(t *testing.T) {
+	gvr := schema.GroupVersionResource{Resource: "deployments"}
+	args := &Arguments{}
+	desired, available := int64(3), int64(1)
+	obj := newDeploymentWithMinimumReplicasUnavailable(&desired, &available)
+
+	conditions := []interface{}{
+		map[string]interface{}{
+			"type":    "Progressing",
+			"status":  "False",
+			"reason":  "ProgressDeadlineExceeded",
+			"message": "ReplicaSet has timed out progressing.",
+		},
+	}
+	counter := &handleResourceTypeOutput{}
+	lines, _ := printConditions(args, conditions, counter, gvr, obj)
+
+	if len(lines) != 1 {
+		t.Fatalf("expected 1 line, got %d: %v", len(lines), lines)
+	}
+	if strings.Contains(lines[0], "available") {
+		t.Errorf("did not expect replica detail for non-MinimumReplicasUnavailable reason, got: %s", lines[0])
+	}
+}
+
 func TestPrintResourcesWarnsDeletionTimestamp(t *testing.T) {
 	gvr := schema.GroupVersionResource{Resource: "pods"}
 	args := &Arguments{
