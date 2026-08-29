@@ -67,6 +67,7 @@ Examples:
 * *Ready=True will be ignored
 * *Healthy=True will be ignored
 * *Pressure=False will be ignored.
+* *Degraded=False will be ignored.
 
 ## Command "while"
 

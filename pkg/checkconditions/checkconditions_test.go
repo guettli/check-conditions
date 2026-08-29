@@ -69,6 +69,97 @@ func TestHandleConditionSkipsHealthyForeignClusterConditions(t *testing.T) {
 	}
 }
 
+func TestHandleConditionSkipsHealthyTigeraConditions(t *testing.T) {
+	tests := []struct {
+		name      string
+		resource  string
+		condition map[string]interface{}
+		wantRows  int
+	}{
+		{
+			name:     "tigerastatuses Degraded=False is healthy",
+			resource: "tigerastatuses",
+			condition: map[string]interface{}{
+				"type":    "Degraded",
+				"status":  "False",
+				"reason":  "AllObjectsAvailable",
+				"message": "All Objects Available",
+			},
+			wantRows: 0,
+		},
+		{
+			name:     "tigerastatuses Progressing=False is healthy",
+			resource: "tigerastatuses",
+			condition: map[string]interface{}{
+				"type":    "Progressing",
+				"status":  "False",
+				"reason":  "AllObjectsAvailable",
+				"message": "All Objects Available",
+			},
+			wantRows: 0,
+		},
+		{
+			name:     "installations Degraded=False is healthy",
+			resource: "installations",
+			condition: map[string]interface{}{
+				"type":    "Degraded",
+				"status":  "False",
+				"reason":  "AllObjectsAvailable",
+				"message": "All Objects Available",
+			},
+			wantRows: 0,
+		},
+		{
+			name:     "installations Progressing=False is healthy",
+			resource: "installations",
+			condition: map[string]interface{}{
+				"type":    "Progressing",
+				"status":  "False",
+				"reason":  "AllObjectsAvailable",
+				"message": "All Objects Available",
+			},
+			wantRows: 0,
+		},
+		{
+			name:     "generic Degraded=False is healthy",
+			resource: "somethingelse",
+			condition: map[string]interface{}{
+				"type":    "Degraded",
+				"status":  "False",
+				"reason":  "AsExpected",
+				"message": "",
+			},
+			wantRows: 0,
+		},
+		{
+			name:     "deployments Progressing=False ProgressDeadlineExceeded is still reported",
+			resource: "deployments",
+			condition: map[string]interface{}{
+				"type":    "Progressing",
+				"status":  "False",
+				"reason":  "ProgressDeadlineExceeded",
+				"message": `ReplicaSet "istio-ingressgateway-76dc58b7f" has timed out progressing.`,
+			},
+			wantRows: 1,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			gvr := schema.GroupVersionResource{Resource: tc.resource}
+			counter := &handleResourceTypeOutput{}
+			var rows []conditionRow
+			rows = handleCondition(tc.condition, counter, gvr, rows)
+			if len(rows) != tc.wantRows {
+				t.Fatalf("expected %d rows, got %d: %v", tc.wantRows, len(rows), rows)
+			}
+			if counter.checkedConditions != 1 {
+				t.Fatalf("expected 1 checked condition, got %d", counter.checkedConditions)
+			}
+		})
+	}
+}
+
 func TestPrintConditionsMergesDuplicateReasonMessage(t *testing.T) {
 	gvr := schema.GroupVersionResource{Resource: "jobs"}
 	args := &Arguments{}
