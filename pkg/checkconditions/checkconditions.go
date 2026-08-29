@@ -973,6 +973,10 @@ var conditionLinesToIgnoreRegexs = []*regexp.Regexp{
 
 	// liqo
 	regexp.MustCompile(`foreignclusters APIServerStatus=Established`),
+
+	// Tigera / Calico operator
+	regexp.MustCompile(`tigerastatuses Progressing=False AllObjectsAvailable`),
+	regexp.MustCompile(`installations Progressing=False AllObjectsAvailable`),
 }
 
 func conditionTypeHasPositiveMeaning(resource string, ct string) bool {
@@ -1055,7 +1059,7 @@ func conditionTypeHasNegativeMeaning(resource string, ct string) bool {
 	}
 
 	for _, suffix := range []string{
-		"Unavailable", "Pressure", "Dangling", "Unhealthy", "Paused", "Deleting", "Failed",
+		"Unavailable", "Pressure", "Dangling", "Unhealthy", "Paused", "Deleting", "Failed", "Degraded",
 	} {
 		if strings.HasSuffix(ct, suffix) {
 			return true
