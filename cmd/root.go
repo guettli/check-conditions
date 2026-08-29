@@ -65,4 +65,6 @@ func init() {
 	rootCmd.PersistentFlags().Int16VarP(&arguments.RetryCount, "retry-count", "", 5, "Network errors: How many times to retry the command before giving up. This applies only to the first connection. As soon as a successful connection is made, the command will retry forever. Set to zero to also retry the first connection forever.")
 
 	rootCmd.PersistentFlags().DurationVar(&arguments.WarnDeletionTimestampOlderThan, "warn-deletion-older-than", 10*time.Minute, "Warn about resources whose deletionTimestamp is older than this duration. Set to 0 to disable.")
+
+	rootCmd.PersistentFlags().DurationVar(&arguments.PodStartGracePeriod, "pod-start-grace", 30*time.Second, "Treat a Pod whose ContainersReady/Initialized condition is False as healthy while it is still starting for the first time (no restarts) and younger than this duration. Set to 0 to disable.")
 }

@@ -254,6 +254,93 @@ func TestPrintResourcesDisabledDeletionTimestampCheck(t *testing.T) {
 	}
 }
 
+func newStartingPod(restartCount int64) unstructured.Unstructured {
+	obj := unstructured.Unstructured{}
+	obj.SetName("agentloop-sharedinbox-issue-300-run")
+	obj.SetNamespace("agentloop")
+	if restartCount > 0 {
+		_ = unstructured.SetNestedSlice(obj.Object, []interface{}{
+			map[string]interface{}{
+				"name":         "worker",
+				"restartCount": restartCount,
+			},
+		}, "status", "containerStatuses")
+	}
+	return obj
+}
+
+func startingPodConditions(transition time.Time) []interface{} {
+	ts := transition.Format(time.RFC3339)
+	return []interface{}{
+		map[string]interface{}{
+			"type":               "ContainersReady",
+			"status":             "False",
+			"reason":             "ContainersNotReady",
+			"message":            "containers with unready status: [worker]",
+			"lastTransitionTime": ts,
+		},
+		map[string]interface{}{
+			"type":               "Initialized",
+			"status":             "False",
+			"reason":             "ContainersNotInitialized",
+			"message":            "containers with incomplete status: [inject-agentloop]",
+			"lastTransitionTime": ts,
+		},
+	}
+}
+
+func TestPrintConditionsSuppressesStartingPod(t *testing.T) {
+	gvr := schema.GroupVersionResource{Resource: "pods"}
+	args := &Arguments{PodStartGracePeriod: 30 * time.Second}
+	obj := newStartingPod(0)
+
+	counter := &handleResourceTypeOutput{}
+	lines, _ := printConditions(args, startingPodConditions(time.Now().Add(-3*time.Second)), counter, gvr, obj)
+
+	if len(lines) != 0 {
+		t.Fatalf("expected starting pod conditions to be suppressed, got %d lines: %v", len(lines), lines)
+	}
+}
+
+func TestPrintConditionsReportsStalledPod(t *testing.T) {
+	gvr := schema.GroupVersionResource{Resource: "pods"}
+	args := &Arguments{PodStartGracePeriod: 30 * time.Second}
+	obj := newStartingPod(0)
+
+	counter := &handleResourceTypeOutput{}
+	lines, _ := printConditions(args, startingPodConditions(time.Now().Add(-5*time.Minute)), counter, gvr, obj)
+
+	if len(lines) == 0 {
+		t.Fatal("expected a warning line for a pod stuck past the grace period, got none")
+	}
+}
+
+func TestPrintConditionsReportsRestartedPod(t *testing.T) {
+	gvr := schema.GroupVersionResource{Resource: "pods"}
+	args := &Arguments{PodStartGracePeriod: 30 * time.Second}
+	obj := newStartingPod(1)
+
+	counter := &handleResourceTypeOutput{}
+	lines, _ := printConditions(args, startingPodConditions(time.Now().Add(-3*time.Second)), counter, gvr, obj)
+
+	if len(lines) == 0 {
+		t.Fatal("expected a warning line for a restarted pod even within the grace period, got none")
+	}
+}
+
+func TestPrintConditionsGraceDisabled(t *testing.T) {
+	gvr := schema.GroupVersionResource{Resource: "pods"}
+	args := &Arguments{PodStartGracePeriod: 0}
+	obj := newStartingPod(0)
+
+	counter := &handleResourceTypeOutput{}
+	lines, _ := printConditions(args, startingPodConditions(time.Now().Add(-3*time.Second)), counter, gvr, obj)
+
+	if len(lines) == 0 {
+		t.Fatal("expected a warning line when the grace period is disabled, got none")
+	}
+}
+
 func TestKubeconfigSource(t *testing.T) {
 	t.Run("explicit path wins", func(t *testing.T) {
 		rules := &clientcmd.ClientConfigLoadingRules{ExplicitPath: "/tmp/explicit"}

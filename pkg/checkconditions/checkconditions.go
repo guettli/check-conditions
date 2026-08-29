@@ -46,8 +46,13 @@ type Arguments struct {
 	// WarnDeletionTimestampOlderThan warns about resources whose deletionTimestamp
 	// is older than this duration. Set to 0 to disable.
 	WarnDeletionTimestampOlderThan time.Duration
-	forbiddenResourcesPrinted      bool
-	connectionInfoPrinted          bool
+	// PodStartGracePeriod suppresses "pod is still starting" noise: a Pod whose
+	// ContainersReady/Initialized condition is False but younger than this
+	// duration, and which has not restarted yet, is treated as healthy. Set to 0
+	// to disable.
+	PodStartGracePeriod       time.Duration
+	forbiddenResourcesPrinted bool
+	connectionInfoPrinted     bool
 }
 
 // matchAnyPattern reports whether name matches any of the given glob patterns.
@@ -608,6 +613,19 @@ func printConditions(args *Arguments, conditions []interface{}, counter *handleR
 	for _, condition := range conditions {
 		rows = handleCondition(condition, counter, gvr, rows)
 	}
+	// Suppress "pod is still starting" noise: while a pod is starting for the
+	// first time (no restarts), a recent ContainersReady=False / Initialized=False
+	// is expected and not worth reporting.
+	if gvr.Resource == "pods" && args.PodStartGracePeriod > 0 && podHasNoRestarts(obj) {
+		filtered := rows[:0]
+		for _, r := range rows {
+			if podStartingCondition(r, args.PodStartGracePeriod) {
+				continue
+			}
+			filtered = append(filtered, r)
+		}
+		rows = filtered
+	}
 	// remove general ready condition, if it is already contained in a particular condition
 	// https://pkg.go.dev/sigs.k8s.io/cluster-api/util/conditions#SetSummary
 	var ready *conditionRow
@@ -708,6 +726,47 @@ func printConditions(args *Arguments, conditions []interface{}, counter *handleR
 		}
 	}
 	return lines, again
+}
+
+// podStartingCondition reports whether a condition row is a pod that is still
+// starting for the first time: a ContainersReady/Initialized condition that is
+// False and younger than the grace period. A missing lastTransitionTime is left
+// untouched (reported) so nothing is hidden without evidence it is recent.
+func podStartingCondition(r conditionRow, grace time.Duration) bool {
+	if r.conditionStatus != "False" {
+		return false
+	}
+	if r.conditionType != "ContainersReady" && r.conditionType != "Initialized" {
+		return false
+	}
+	if r.conditionLastTransitionTime.IsZero() {
+		return false
+	}
+	return time.Since(r.conditionLastTransitionTime) < grace
+}
+
+// podHasNoRestarts reports whether none of the pod's containers have restarted
+// yet. A restart means the pod already ran once, so a not-ready condition is no
+// longer a first-start situation and should be reported. Missing restartCount
+// fields count as zero restarts.
+func podHasNoRestarts(obj unstructured.Unstructured) bool {
+	for _, key := range []string{"containerStatuses", "initContainerStatuses"} {
+		statuses, _, err := unstructured.NestedSlice(obj.Object, "status", key)
+		if err != nil {
+			continue
+		}
+		for _, s := range statuses {
+			m, ok := s.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			restarts, found, err := unstructured.NestedInt64(m, "restartCount")
+			if err == nil && found && restarts > 0 {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // deploymentReplicaDetail returns a fragment like "available 1/3" describing how many
