@@ -50,6 +50,12 @@ go run github.com/guettli/check-conditions@latest all -n 'foo-*' --exclude-names
 go run github.com/guettli/check-conditions@latest all --exclude-namespace 'kube-*,longhorn-system'
 ```
 
+A Pod that just started reports `ContainersReady=False` / `Initialized=False` for a few seconds. This is expected, not a problem. By default such conditions are treated as healthy while the pod is starting for the first time (no container restarts yet) and the condition is younger than 30 seconds. Use `--pod-start-grace` to change the duration, or set it to `0` to always report these conditions:
+
+```console
+go run github.com/guettli/check-conditions@latest all --pod-start-grace 1m
+```
+
 ## Terminology
 
 Since I found not good umbrella term for CRDs and core resource types, I use the term CRD.
@@ -140,6 +146,7 @@ HTML GUI via localhost.
 Negative conditions are ok for a defined time period.
 Example: It is ok if a Pod needs 20 seconds to start.
 But it is not ok if it takes 5 minutes.
+(Implemented for pod startup via `--pod-start-grace`; still open for other conditions.)
 
 To make warnings appear sooner after starting the programm
 (it takes 20 secs even for small clusters), we could
