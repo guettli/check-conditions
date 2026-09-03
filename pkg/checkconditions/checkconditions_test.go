@@ -194,6 +194,40 @@ func TestHandleConditionSkipsHealthyTigeraConditions(t *testing.T) {
 	}
 }
 
+func TestHandleConditionSkipsHealthyCustomNodeConditions(t *testing.T) {
+	gvr := schema.GroupVersionResource{Resource: "nodes"}
+	counter := &handleResourceTypeOutput{}
+
+	tests := []map[string]interface{}{
+		{"type": "CertRenewalFailing", "status": "False", "reason": "Renewing", "message": "node certs are valid and renewing"},
+		{"type": "ClockNotSynchronized", "status": "False", "reason": "ClockSynced", "message": "system clock is synchronized"},
+		{"type": "DiskTemperatureHigh", "status": "False", "reason": "DiskTemperatureWithinLimits", "message": "disk temperature within limits"},
+		{"type": "DiskUsageHigh", "status": "False", "reason": "WithinLimits", "message": "disk usage within limits"},
+		{"type": "DiskWearHigh", "status": "False", "reason": "DiskWearWithinLimits", "message": "disk wear within limits"},
+		{"type": "GpuFallenOffBus", "status": "False", "reason": "GpuOnBus", "message": "no GPU has fallen off the bus"},
+		{"type": "NodeInfoStale", "status": "False", "reason": "NodeInfoFresh", "message": "nodes.json is up to date"},
+		{"type": "NodeServiceDown", "status": "False", "reason": "AllRunning", "message": "all node services running"},
+		{"type": "NodeTampered", "status": "False", "reason": "NoChangesDetected", "message": "protected node files match the boot baseline"},
+		{"type": "ProxyNotServing", "status": "False", "reason": "ProxyServing", "message": "proxy serving"},
+		{"type": "SealedOSTampered", "status": "False", "reason": "OSLayersVerified", "message": "every sealed OS layer matches its recorded dm-verity root hash"},
+		{"type": "ServiceNotRecovering", "status": "False", "reason": "Recovering", "message": "critical services are recovering"},
+		{"type": "TunnelDisconnected", "status": "False", "reason": "TunnelConnected", "message": "tunnel connected"},
+		{"type": "VerityCorruption", "status": "False", "reason": "VerityHasNoCorruption", "message": "sealed OS verity has no corruption"},
+	}
+
+	var rows []conditionRow
+	for _, condition := range tests {
+		rows = handleCondition(&Arguments{}, condition, counter, gvr, rows)
+	}
+
+	if len(rows) != 0 {
+		t.Fatalf("expected healthy custom node conditions to be suppressed, got %d rows: %v", len(rows), rows)
+	}
+	if counter.checkedConditions != int32(len(tests)) {
+		t.Fatalf("expected %d checked conditions, got %d", len(tests), counter.checkedConditions)
+	}
+}
+
 func TestPrintConditionsMergesDuplicateReasonMessage(t *testing.T) {
 	gvr := schema.GroupVersionResource{Resource: "jobs"}
 	args := &Arguments{}
