@@ -1,6 +1,7 @@
 package checkconditions
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -32,7 +33,7 @@ func TestHandleConditionSkipsHealthyMachineConditions(t *testing.T) {
 
 	var rows []conditionRow
 	for _, condition := range tests {
-		rows = handleCondition(condition, counter, gvr, rows)
+		rows = handleCondition(&Arguments{}, condition, counter, gvr, rows)
 	}
 
 	if len(rows) != 0 {
@@ -58,7 +59,7 @@ func TestHandleConditionSkipsHealthyForeignClusterConditions(t *testing.T) {
 
 	var rows []conditionRow
 	for _, condition := range tests {
-		rows = handleCondition(condition, counter, gvr, rows)
+		rows = handleCondition(&Arguments{}, condition, counter, gvr, rows)
 	}
 
 	if len(rows) != 0 {
@@ -66,6 +67,39 @@ func TestHandleConditionSkipsHealthyForeignClusterConditions(t *testing.T) {
 	}
 	if counter.checkedConditions != int32(len(tests)) {
 		t.Fatalf("expected %d checked conditions, got %d", len(tests), counter.checkedConditions)
+	}
+}
+
+func TestHandleConditionSkipsExtraIgnoreRegex(t *testing.T) {
+	gvr := schema.GroupVersionResource{Resource: "widgets"}
+	args := &Arguments{
+		ExtraConditionLinesToIgnoreRegexs: []*regexp.Regexp{
+			regexp.MustCompile(`widgets MyCondition=False MyReason .*`),
+		},
+	}
+
+	ignored := map[string]interface{}{
+		"type":    "MyCondition",
+		"status":  "False",
+		"reason":  "MyReason",
+		"message": "anything here",
+	}
+	notIgnored := map[string]interface{}{
+		"type":    "OtherCondition",
+		"status":  "False",
+		"reason":  "OtherReason",
+		"message": "still reported",
+	}
+
+	var rows []conditionRow
+	counter := &handleResourceTypeOutput{}
+	rows = handleCondition(args, ignored, counter, gvr, rows)
+	if len(rows) != 0 {
+		t.Fatalf("expected condition matching ExtraConditionLinesToIgnoreRegexs to be suppressed, got %d rows", len(rows))
+	}
+	rows = handleCondition(args, notIgnored, counter, gvr, rows)
+	if len(rows) != 1 {
+		t.Fatalf("expected non-matching condition to be reported, got %d rows", len(rows))
 	}
 }
 
@@ -149,7 +183,7 @@ func TestHandleConditionSkipsHealthyTigeraConditions(t *testing.T) {
 			gvr := schema.GroupVersionResource{Resource: tc.resource}
 			counter := &handleResourceTypeOutput{}
 			var rows []conditionRow
-			rows = handleCondition(tc.condition, counter, gvr, rows)
+			rows = handleCondition(&Arguments{}, tc.condition, counter, gvr, rows)
 			if len(rows) != tc.wantRows {
 				t.Fatalf("expected %d rows, got %d: %v", tc.wantRows, len(rows), rows)
 			}

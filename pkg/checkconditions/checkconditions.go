@@ -50,9 +50,13 @@ type Arguments struct {
 	// ContainersReady/Initialized condition is False but younger than this
 	// duration, and which has not restarted yet, is treated as healthy. Set to 0
 	// to disable.
-	PodStartGracePeriod       time.Duration
-	forbiddenResourcesPrinted bool
-	connectionInfoPrinted     bool
+	PodStartGracePeriod time.Duration
+	// ExtraConditionLinesToIgnoreRegexs are additional regexes (from
+	// --ignore-condition-regex) checked in addition to the built-in
+	// conditionLinesToIgnoreRegexs.
+	ExtraConditionLinesToIgnoreRegexs []*regexp.Regexp
+	forbiddenResourcesPrinted         bool
+	connectionInfoPrinted             bool
 }
 
 // matchAnyPattern reports whether name matches any of the given glob patterns.
@@ -173,15 +177,15 @@ func resolveNamespacePatterns(ctx context.Context, clientset *kubernetes.Clients
 var resourcesToSkip = []schema.GroupResource{
 	{Group: "", Resource: "bindings"},
 	{Group: "", Resource: "componentstatuses"},
-	{Group: "", Resource: "configmaps"},        // no status subresource
-	{Group: "", Resource: "endpoints"},         // Deprecated in 1.33+
-	{Group: "", Resource: "events"},            // no status subresource
-	{Group: "", Resource: "limitranges"},       // no status subresource
-	{Group: "", Resource: "persistentvolumes"}, // PersistentVolumeStatus has phase only, no conditions
-	{Group: "", Resource: "podtemplates"},      // no status subresource
-	{Group: "", Resource: "resourcequotas"},    // ResourceQuotaStatus has hard/used, no conditions
-	{Group: "", Resource: "secrets"},           // no status subresource
-	{Group: "", Resource: "serviceaccounts"},   // no status subresource
+	{Group: "", Resource: "configmaps"},              // no status subresource
+	{Group: "", Resource: "endpoints"},               // Deprecated in 1.33+
+	{Group: "", Resource: "events"},                  // no status subresource
+	{Group: "", Resource: "limitranges"},             // no status subresource
+	{Group: "", Resource: "persistentvolumes"},       // PersistentVolumeStatus has phase only, no conditions
+	{Group: "", Resource: "podtemplates"},            // no status subresource
+	{Group: "", Resource: "resourcequotas"},          // ResourceQuotaStatus has hard/used, no conditions
+	{Group: "", Resource: "secrets"},                 // no status subresource
+	{Group: "", Resource: "serviceaccounts"},         // no status subresource
 	{Group: "apps", Resource: "controllerrevisions"}, // no status subresource
 	{Group: "authorization.k8s.io", Resource: "localsubjectaccessreviews"},
 	{Group: "authorization.k8s.io", Resource: "selfsubjectaccessreviews"},
@@ -611,7 +615,7 @@ func printConditions(args *Arguments, conditions []interface{}, counter *handleR
 ) (lines []string, again bool) {
 	var rows []conditionRow
 	for _, condition := range conditions {
-		rows = handleCondition(condition, counter, gvr, rows)
+		rows = handleCondition(args, condition, counter, gvr, rows)
 	}
 	// Suppress "pod is still starting" noise: while a pod is starting for the
 	// first time (no restarts), a recent ContainersReady=False / Initialized=False
@@ -787,7 +791,7 @@ func deploymentReplicaDetail(obj unstructured.Unstructured) string {
 	return fmt.Sprintf("available %d/%d", available, desired)
 }
 
-func handleCondition(condition interface{}, counter *handleResourceTypeOutput, gvr schema.GroupVersionResource, rows []conditionRow) []conditionRow {
+func handleCondition(args *Arguments, condition interface{}, counter *handleResourceTypeOutput, gvr schema.GroupVersionResource, rows []conditionRow) []conditionRow {
 	conditionMap, ok := condition.(map[string]interface{})
 	if !ok {
 		fmt.Println("Invalid condition format")
@@ -814,6 +818,11 @@ func handleCondition(condition interface{}, counter *handleResourceTypeOutput, g
 	conditionMessage, _ := conditionMap["message"].(string)
 	conditionLine := fmt.Sprintf("%s %s=%s %s %q", gvr.Resource, conditionType, conditionStatus, conditionReason, conditionMessage)
 	for _, r := range conditionLinesToIgnoreRegexs {
+		if r.MatchString(conditionLine) {
+			return rows
+		}
+	}
+	for _, r := range args.ExtraConditionLinesToIgnoreRegexs {
 		if r.MatchString(conditionLine) {
 			return rows
 		}
