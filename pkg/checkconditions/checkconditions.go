@@ -930,6 +930,7 @@ var conditionTypesOfResourceWithNegativeMeaning = map[string][]string{
 		"NodeTampered",
 		"ProxyNotServing",
 		"SealedOSTampered",
+		"ServiceNotRecovering",
 		"TunnelDisconnected",
 		"VerityCorruption",
 	},
