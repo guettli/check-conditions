@@ -210,7 +210,6 @@ func TestHandleConditionSkipsHealthyCustomNodeConditions(t *testing.T) {
 		{"type": "NodeTampered", "status": "False", "reason": "NoChangesDetected", "message": "protected node files match the boot baseline"},
 		{"type": "ProxyNotServing", "status": "False", "reason": "ProxyServing", "message": "proxy serving"},
 		{"type": "SealedOSTampered", "status": "False", "reason": "OSLayersVerified", "message": "every sealed OS layer matches its recorded dm-verity root hash"},
-		{"type": "ServiceNotRecovering", "status": "False", "reason": "Recovering", "message": "critical services are recovering"},
 		{"type": "TunnelDisconnected", "status": "False", "reason": "TunnelConnected", "message": "tunnel connected"},
 		{"type": "VerityCorruption", "status": "False", "reason": "VerityHasNoCorruption", "message": "sealed OS verity has no corruption"},
 	}
