@@ -1,7 +1,9 @@
 package cmd
 
 import (
+	"fmt"
 	"os"
+	"regexp"
 	"runtime/debug"
 	"time"
 
@@ -31,6 +33,13 @@ Output is usualy:
 		if arguments.RetryCount == 0 {
 			arguments.RetryForEver = true
 		}
+		for _, s := range ignoreConditionRegexStrings {
+			r, err := regexp.Compile(s)
+			if err != nil {
+				return fmt.Errorf("invalid --ignore-condition-regex %q: %w", s, err)
+			}
+			arguments.ExtraConditionLinesToIgnoreRegexs = append(arguments.ExtraConditionLinesToIgnoreRegexs, r)
+		}
 		return nil
 	},
 }
@@ -44,6 +53,8 @@ func Execute() {
 }
 
 var arguments = checkconditions.Arguments{}
+
+var ignoreConditionRegexStrings []string
 
 func init() {
 	arguments.ProgrammStartTime = time.Now()
@@ -67,4 +78,6 @@ func init() {
 	rootCmd.PersistentFlags().DurationVar(&arguments.WarnDeletionTimestampOlderThan, "warn-deletion-older-than", 10*time.Minute, "Warn about resources whose deletionTimestamp is older than this duration. Set to 0 to disable.")
 
 	rootCmd.PersistentFlags().DurationVar(&arguments.PodStartGracePeriod, "pod-start-grace", 30*time.Second, "Treat a Pod whose ContainersReady/Initialized condition is False as healthy while it is still starting for the first time (no restarts) and younger than this duration. Set to 0 to disable.")
+
+	rootCmd.PersistentFlags().StringArrayVar(&ignoreConditionRegexStrings, "ignore-condition-regex", nil, "Additional regex to ignore a condition line, on top of the built-in ignore list. Can be given multiple times. Matched against: 'resource type=status reason \"message\"', e.g. 'mypods MyCondition=False MyReason .*'")
 }

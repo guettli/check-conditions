@@ -56,6 +56,13 @@ A Pod that just started reports `ContainersReady=False` / `Initialized=False` fo
 go run github.com/guettli/check-conditions@latest all --pod-start-grace 1m
 ```
 
+The tool ships with a built-in list of regexes for known-noisy condition lines that are always ignored. Use `--ignore-condition-regex` to add your own, on top of that list. It can be given multiple times. The regex is matched against a line built as `resource type=status reason "message"` (namespace, resource name, and duration are stripped) — run the tool once to see the exact line you want to ignore, then turn it into a pattern:
+
+```console
+go run github.com/guettli/check-conditions@latest all --ignore-condition-regex 'mypods MyCondition=False MyReason .*'
+go run github.com/guettli/check-conditions@latest all --ignore-condition-regex 'foo=False .*' --ignore-condition-regex 'bar=False .*'
+```
+
 ## Terminology
 
 Since I found not good umbrella term for CRDs and core resource types, I use the term CRD.
