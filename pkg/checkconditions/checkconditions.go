@@ -56,37 +56,70 @@ type Arguments struct {
 	// conditionLinesToIgnoreRegexs.
 	ExtraConditionLinesToIgnoreRegexs []*regexp.Regexp
 	// IgnoreConditionYoungerThan ignores conditions whose lastTransitionTime is
-	// more recent than (now - this duration). Set to 0 to disable.
-	IgnoreConditionYoungerThan time.Duration
+	// more recent than the threshold: for a duration, more recent than (now -
+	// duration); for an absolute timestamp, after that timestamp. Zero value
+	// disables it.
+	IgnoreConditionYoungerThan ConditionTimeThreshold
 	// IgnoreConditionOlderThan ignores conditions whose lastTransitionTime is
-	// older than (now - this duration). Set to 0 to disable.
-	IgnoreConditionOlderThan time.Duration
-	// IgnoreConditionBefore ignores conditions whose lastTransitionTime is
-	// before this absolute timestamp. Zero value disables it.
-	IgnoreConditionBefore time.Time
-	// IgnoreConditionAfter ignores conditions whose lastTransitionTime is
-	// after this absolute timestamp. Zero value disables it.
-	IgnoreConditionAfter      time.Time
+	// older than the threshold: for a duration, older than (now - duration);
+	// for an absolute timestamp, before that timestamp. Zero value disables it.
+	IgnoreConditionOlderThan ConditionTimeThreshold
 	forbiddenResourcesPrinted bool
 	connectionInfoPrinted     bool
 }
 
-// conditionOutsideTimeWindow reports whether t is excluded by any of the
-// active --ignore-condition-younger-than / --ignore-condition-older-than /
-// --ignore-condition-before / --ignore-condition-after filters.
+// ConditionTimeThreshold is either a duration relative to "now" (evaluated
+// at check time) or a fixed absolute timestamp, set via ParseConditionTimeThreshold.
+// At most one of the two fields is set; the zero value (both fields zero)
+// means "no threshold".
+type ConditionTimeThreshold struct {
+	Duration time.Duration
+	Absolute time.Time
+}
+
+// IsZero reports whether the threshold is unset.
+func (t ConditionTimeThreshold) IsZero() bool {
+	return t.Duration == 0 && t.Absolute.IsZero()
+}
+
+// ParseConditionTimeThreshold parses s as either a duration (e.g. "24h",
+// "5m") or an RFC3339 timestamp (e.g. "2026-09-01T00:00:00Z"). An empty
+// string yields the zero (disabled) threshold.
+func ParseConditionTimeThreshold(s string) (ConditionTimeThreshold, error) {
+	if s == "" {
+		return ConditionTimeThreshold{}, nil
+	}
+	if d, err := time.ParseDuration(s); err == nil {
+		if d <= 0 {
+			return ConditionTimeThreshold{}, fmt.Errorf("duration must be positive, got %q", s)
+		}
+		return ConditionTimeThreshold{Duration: d}, nil
+	}
+	if t, err := time.Parse(time.RFC3339, s); err == nil {
+		return ConditionTimeThreshold{Absolute: t}, nil
+	}
+	return ConditionTimeThreshold{}, fmt.Errorf("must be a duration (e.g. 24h) or an RFC3339 timestamp (e.g. 2026-09-01T00:00:00Z), got %q", s)
+}
+
+// conditionOutsideTimeWindow reports whether t is excluded by the active
+// --ignore-condition-younger-than / --ignore-condition-older-than filters.
 func (a *Arguments) conditionOutsideTimeWindow(t time.Time) bool {
 	now := time.Now()
-	if a.IgnoreConditionYoungerThan > 0 && now.Sub(t) < a.IgnoreConditionYoungerThan {
-		return true
+	if younger := a.IgnoreConditionYoungerThan; !younger.IsZero() {
+		if younger.Duration > 0 && now.Sub(t) < younger.Duration {
+			return true
+		}
+		if !younger.Absolute.IsZero() && t.After(younger.Absolute) {
+			return true
+		}
 	}
-	if a.IgnoreConditionOlderThan > 0 && now.Sub(t) > a.IgnoreConditionOlderThan {
-		return true
-	}
-	if !a.IgnoreConditionBefore.IsZero() && t.Before(a.IgnoreConditionBefore) {
-		return true
-	}
-	if !a.IgnoreConditionAfter.IsZero() && t.After(a.IgnoreConditionAfter) {
-		return true
+	if older := a.IgnoreConditionOlderThan; !older.IsZero() {
+		if older.Duration > 0 && now.Sub(t) > older.Duration {
+			return true
+		}
+		if !older.Absolute.IsZero() && t.Before(older.Absolute) {
+			return true
+		}
 	}
 	return false
 }

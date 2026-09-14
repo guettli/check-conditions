@@ -105,7 +105,7 @@ func TestHandleConditionSkipsExtraIgnoreRegex(t *testing.T) {
 
 func TestHandleConditionIgnoreConditionYoungerThan(t *testing.T) {
 	gvr := schema.GroupVersionResource{Resource: "widgets"}
-	args := &Arguments{IgnoreConditionYoungerThan: time.Hour}
+	args := &Arguments{IgnoreConditionYoungerThan: ConditionTimeThreshold{Duration: time.Hour}}
 	counter := &handleResourceTypeOutput{}
 
 	recent := map[string]interface{}{
@@ -130,7 +130,7 @@ func TestHandleConditionIgnoreConditionYoungerThan(t *testing.T) {
 
 func TestHandleConditionIgnoreConditionOlderThan(t *testing.T) {
 	gvr := schema.GroupVersionResource{Resource: "widgets"}
-	args := &Arguments{IgnoreConditionOlderThan: time.Hour}
+	args := &Arguments{IgnoreConditionOlderThan: ConditionTimeThreshold{Duration: time.Hour}}
 	counter := &handleResourceTypeOutput{}
 
 	recent := map[string]interface{}{
@@ -153,7 +153,7 @@ func TestHandleConditionIgnoreConditionOlderThan(t *testing.T) {
 	}
 }
 
-func TestHandleConditionIgnoreConditionBeforeAfter(t *testing.T) {
+func TestHandleConditionIgnoreConditionAbsoluteTimestamp(t *testing.T) {
 	gvr := schema.GroupVersionResource{Resource: "widgets"}
 	cutoff := time.Now().Add(-time.Hour)
 	counter := &handleResourceTypeOutput{}
@@ -167,26 +167,64 @@ func TestHandleConditionIgnoreConditionBeforeAfter(t *testing.T) {
 		"lastTransitionTime": cutoff.Add(time.Minute).Format(time.RFC3339),
 	}
 
-	argsBefore := &Arguments{IgnoreConditionBefore: cutoff}
+	// --ignore-condition-older-than <timestamp> ignores conditions before it.
+	argsOlderThan := &Arguments{IgnoreConditionOlderThan: ConditionTimeThreshold{Absolute: cutoff}}
 	var rows []conditionRow
-	rows = handleCondition(argsBefore, before, counter, gvr, rows)
+	rows = handleCondition(argsOlderThan, before, counter, gvr, rows)
 	if len(rows) != 0 {
 		t.Fatalf("expected condition before cutoff to be ignored, got %d rows", len(rows))
 	}
-	rows = handleCondition(argsBefore, after, counter, gvr, rows)
+	rows = handleCondition(argsOlderThan, after, counter, gvr, rows)
 	if len(rows) != 1 {
 		t.Fatalf("expected condition after cutoff to be reported, got %d rows", len(rows))
 	}
 
-	argsAfter := &Arguments{IgnoreConditionAfter: cutoff}
+	// --ignore-condition-younger-than <timestamp> ignores conditions after it.
+	argsYoungerThan := &Arguments{IgnoreConditionYoungerThan: ConditionTimeThreshold{Absolute: cutoff}}
 	rows = nil
-	rows = handleCondition(argsAfter, after, counter, gvr, rows)
+	rows = handleCondition(argsYoungerThan, after, counter, gvr, rows)
 	if len(rows) != 0 {
 		t.Fatalf("expected condition after cutoff to be ignored, got %d rows", len(rows))
 	}
-	rows = handleCondition(argsAfter, before, counter, gvr, rows)
+	rows = handleCondition(argsYoungerThan, before, counter, gvr, rows)
 	if len(rows) != 1 {
 		t.Fatalf("expected condition before cutoff to be reported, got %d rows", len(rows))
+	}
+}
+
+func TestParseConditionTimeThreshold(t *testing.T) {
+	th, err := ParseConditionTimeThreshold("")
+	if err != nil || !th.IsZero() {
+		t.Fatalf("expected empty string to parse to a disabled threshold, got %+v, err %v", th, err)
+	}
+
+	th, err = ParseConditionTimeThreshold("24h")
+	if err != nil {
+		t.Fatalf("expected duration to parse, got err %v", err)
+	}
+	if th.Duration != 24*time.Hour || !th.Absolute.IsZero() {
+		t.Fatalf("expected duration threshold, got %+v", th)
+	}
+
+	th, err = ParseConditionTimeThreshold("2026-09-01T00:00:00Z")
+	if err != nil {
+		t.Fatalf("expected RFC3339 timestamp to parse, got err %v", err)
+	}
+	want := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
+	if th.Duration != 0 || !th.Absolute.Equal(want) {
+		t.Fatalf("expected absolute threshold %v, got %+v", want, th)
+	}
+
+	if _, err := ParseConditionTimeThreshold("not-a-duration-or-timestamp"); err == nil {
+		t.Fatalf("expected error for invalid input")
+	}
+
+	if _, err := ParseConditionTimeThreshold("-5m"); err == nil {
+		t.Fatalf("expected error for negative duration, since it would silently become a no-op filter")
+	}
+
+	if _, err := ParseConditionTimeThreshold("0s"); err == nil {
+		t.Fatalf("expected error for zero duration, since it is indistinguishable from a disabled threshold")
 	}
 }
 
