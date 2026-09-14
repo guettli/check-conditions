@@ -40,6 +40,20 @@ Output is usualy:
 			}
 			arguments.ExtraConditionLinesToIgnoreRegexs = append(arguments.ExtraConditionLinesToIgnoreRegexs, r)
 		}
+		if ignoreConditionBeforeString != "" {
+			t, err := time.Parse(time.RFC3339, ignoreConditionBeforeString)
+			if err != nil {
+				return fmt.Errorf("invalid --ignore-condition-before %q: %w", ignoreConditionBeforeString, err)
+			}
+			arguments.IgnoreConditionBefore = t
+		}
+		if ignoreConditionAfterString != "" {
+			t, err := time.Parse(time.RFC3339, ignoreConditionAfterString)
+			if err != nil {
+				return fmt.Errorf("invalid --ignore-condition-after %q: %w", ignoreConditionAfterString, err)
+			}
+			arguments.IgnoreConditionAfter = t
+		}
 		return nil
 	},
 }
@@ -55,6 +69,9 @@ func Execute() {
 var arguments = checkconditions.Arguments{}
 
 var ignoreConditionRegexStrings []string
+
+var ignoreConditionBeforeString string
+var ignoreConditionAfterString string
 
 func init() {
 	arguments.ProgrammStartTime = time.Now()
@@ -80,4 +97,12 @@ func init() {
 	rootCmd.PersistentFlags().DurationVar(&arguments.PodStartGracePeriod, "pod-start-grace", 30*time.Second, "Treat a Pod whose ContainersReady/Initialized condition is False as healthy while it is still starting for the first time (no restarts) and younger than this duration. Set to 0 to disable.")
 
 	rootCmd.PersistentFlags().StringArrayVar(&ignoreConditionRegexStrings, "ignore-condition-regex", nil, "Additional regex to ignore a condition line, on top of the built-in ignore list. Can be given multiple times. Matched against: 'resource type=status reason \"message\"', e.g. 'mypods MyCondition=False MyReason .*'")
+
+	rootCmd.PersistentFlags().DurationVar(&arguments.IgnoreConditionYoungerThan, "ignore-condition-younger-than", 0, "Ignore unhealthy conditions whose lastTransitionTime is more recent than this duration ago. Example: 5m to ignore conditions that changed within the last 5 minutes. Set to 0 to disable.")
+
+	rootCmd.PersistentFlags().DurationVar(&arguments.IgnoreConditionOlderThan, "ignore-condition-older-than", 0, "Ignore unhealthy conditions whose lastTransitionTime is older than this duration ago. Example: 24h to ignore conditions that have not changed in the last day. Set to 0 to disable.")
+
+	rootCmd.PersistentFlags().StringVar(&ignoreConditionBeforeString, "ignore-condition-before", "", "Ignore unhealthy conditions whose lastTransitionTime is before this RFC3339 timestamp. Example: 2026-09-01T00:00:00Z")
+
+	rootCmd.PersistentFlags().StringVar(&ignoreConditionAfterString, "ignore-condition-after", "", "Ignore unhealthy conditions whose lastTransitionTime is after this RFC3339 timestamp. Example: 2026-09-01T00:00:00Z")
 }

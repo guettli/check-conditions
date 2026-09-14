@@ -55,8 +55,40 @@ type Arguments struct {
 	// --ignore-condition-regex) checked in addition to the built-in
 	// conditionLinesToIgnoreRegexs.
 	ExtraConditionLinesToIgnoreRegexs []*regexp.Regexp
-	forbiddenResourcesPrinted         bool
-	connectionInfoPrinted             bool
+	// IgnoreConditionYoungerThan ignores conditions whose lastTransitionTime is
+	// more recent than (now - this duration). Set to 0 to disable.
+	IgnoreConditionYoungerThan time.Duration
+	// IgnoreConditionOlderThan ignores conditions whose lastTransitionTime is
+	// older than (now - this duration). Set to 0 to disable.
+	IgnoreConditionOlderThan time.Duration
+	// IgnoreConditionBefore ignores conditions whose lastTransitionTime is
+	// before this absolute timestamp. Zero value disables it.
+	IgnoreConditionBefore time.Time
+	// IgnoreConditionAfter ignores conditions whose lastTransitionTime is
+	// after this absolute timestamp. Zero value disables it.
+	IgnoreConditionAfter      time.Time
+	forbiddenResourcesPrinted bool
+	connectionInfoPrinted     bool
+}
+
+// conditionOutsideTimeWindow reports whether t is excluded by any of the
+// active --ignore-condition-younger-than / --ignore-condition-older-than /
+// --ignore-condition-before / --ignore-condition-after filters.
+func (a *Arguments) conditionOutsideTimeWindow(t time.Time) bool {
+	now := time.Now()
+	if a.IgnoreConditionYoungerThan > 0 && now.Sub(t) < a.IgnoreConditionYoungerThan {
+		return true
+	}
+	if a.IgnoreConditionOlderThan > 0 && now.Sub(t) > a.IgnoreConditionOlderThan {
+		return true
+	}
+	if !a.IgnoreConditionBefore.IsZero() && t.Before(a.IgnoreConditionBefore) {
+		return true
+	}
+	if !a.IgnoreConditionAfter.IsZero() && t.After(a.IgnoreConditionAfter) {
+		return true
+	}
+	return false
 }
 
 // matchAnyPattern reports whether name matches any of the given glob patterns.
@@ -834,6 +866,9 @@ func handleCondition(args *Arguments, condition interface{}, counter *handleReso
 	conditionLastTransitionTime := time.Time{}
 	if s != "" {
 		conditionLastTransitionTime, _ = time.Parse(time.RFC3339, s)
+	}
+	if !conditionLastTransitionTime.IsZero() && args.conditionOutsideTimeWindow(conditionLastTransitionTime) {
+		return rows
 	}
 	rows = append(rows, conditionRow{
 		conditionType, conditionStatus,
