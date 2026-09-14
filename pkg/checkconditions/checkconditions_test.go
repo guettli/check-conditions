@@ -103,6 +103,109 @@ func TestHandleConditionSkipsExtraIgnoreRegex(t *testing.T) {
 	}
 }
 
+func TestHandleConditionIgnoreConditionYoungerThan(t *testing.T) {
+	gvr := schema.GroupVersionResource{Resource: "widgets"}
+	args := &Arguments{IgnoreConditionYoungerThan: time.Hour}
+	counter := &handleResourceTypeOutput{}
+
+	recent := map[string]interface{}{
+		"type": "MyCondition", "status": "False", "reason": "MyReason", "message": "",
+		"lastTransitionTime": time.Now().Add(-time.Minute).Format(time.RFC3339),
+	}
+	old := map[string]interface{}{
+		"type": "MyCondition", "status": "False", "reason": "MyReason", "message": "",
+		"lastTransitionTime": time.Now().Add(-2 * time.Hour).Format(time.RFC3339),
+	}
+
+	var rows []conditionRow
+	rows = handleCondition(args, recent, counter, gvr, rows)
+	if len(rows) != 0 {
+		t.Fatalf("expected condition younger than 1h to be ignored, got %d rows", len(rows))
+	}
+	rows = handleCondition(args, old, counter, gvr, rows)
+	if len(rows) != 1 {
+		t.Fatalf("expected condition older than 1h to be reported, got %d rows", len(rows))
+	}
+}
+
+func TestHandleConditionIgnoreConditionOlderThan(t *testing.T) {
+	gvr := schema.GroupVersionResource{Resource: "widgets"}
+	args := &Arguments{IgnoreConditionOlderThan: time.Hour}
+	counter := &handleResourceTypeOutput{}
+
+	recent := map[string]interface{}{
+		"type": "MyCondition", "status": "False", "reason": "MyReason", "message": "",
+		"lastTransitionTime": time.Now().Add(-time.Minute).Format(time.RFC3339),
+	}
+	old := map[string]interface{}{
+		"type": "MyCondition", "status": "False", "reason": "MyReason", "message": "",
+		"lastTransitionTime": time.Now().Add(-2 * time.Hour).Format(time.RFC3339),
+	}
+
+	var rows []conditionRow
+	rows = handleCondition(args, old, counter, gvr, rows)
+	if len(rows) != 0 {
+		t.Fatalf("expected condition older than 1h to be ignored, got %d rows", len(rows))
+	}
+	rows = handleCondition(args, recent, counter, gvr, rows)
+	if len(rows) != 1 {
+		t.Fatalf("expected condition younger than 1h to be reported, got %d rows", len(rows))
+	}
+}
+
+func TestHandleConditionIgnoreConditionBeforeAfter(t *testing.T) {
+	gvr := schema.GroupVersionResource{Resource: "widgets"}
+	cutoff := time.Now().Add(-time.Hour)
+	counter := &handleResourceTypeOutput{}
+
+	before := map[string]interface{}{
+		"type": "MyCondition", "status": "False", "reason": "MyReason", "message": "",
+		"lastTransitionTime": cutoff.Add(-time.Minute).Format(time.RFC3339),
+	}
+	after := map[string]interface{}{
+		"type": "MyCondition", "status": "False", "reason": "MyReason", "message": "",
+		"lastTransitionTime": cutoff.Add(time.Minute).Format(time.RFC3339),
+	}
+
+	argsBefore := &Arguments{IgnoreConditionBefore: cutoff}
+	var rows []conditionRow
+	rows = handleCondition(argsBefore, before, counter, gvr, rows)
+	if len(rows) != 0 {
+		t.Fatalf("expected condition before cutoff to be ignored, got %d rows", len(rows))
+	}
+	rows = handleCondition(argsBefore, after, counter, gvr, rows)
+	if len(rows) != 1 {
+		t.Fatalf("expected condition after cutoff to be reported, got %d rows", len(rows))
+	}
+
+	argsAfter := &Arguments{IgnoreConditionAfter: cutoff}
+	rows = nil
+	rows = handleCondition(argsAfter, after, counter, gvr, rows)
+	if len(rows) != 0 {
+		t.Fatalf("expected condition after cutoff to be ignored, got %d rows", len(rows))
+	}
+	rows = handleCondition(argsAfter, before, counter, gvr, rows)
+	if len(rows) != 1 {
+		t.Fatalf("expected condition before cutoff to be reported, got %d rows", len(rows))
+	}
+}
+
+func TestHandleConditionTimeWindowDisabledByDefault(t *testing.T) {
+	gvr := schema.GroupVersionResource{Resource: "widgets"}
+	counter := &handleResourceTypeOutput{}
+
+	condition := map[string]interface{}{
+		"type": "MyCondition", "status": "False", "reason": "MyReason", "message": "",
+		"lastTransitionTime": time.Now().Add(-24 * time.Hour).Format(time.RFC3339),
+	}
+
+	var rows []conditionRow
+	rows = handleCondition(&Arguments{}, condition, counter, gvr, rows)
+	if len(rows) != 1 {
+		t.Fatalf("expected condition to be reported when no time filters are set, got %d rows", len(rows))
+	}
+}
+
 func TestHandleConditionSkipsHealthyTigeraConditions(t *testing.T) {
 	tests := []struct {
 		name      string

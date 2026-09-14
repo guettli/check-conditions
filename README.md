@@ -63,6 +63,23 @@ go run github.com/guettli/check-conditions@latest all --ignore-condition-regex '
 go run github.com/guettli/check-conditions@latest all --ignore-condition-regex 'foo=False .*' --ignore-condition-regex 'bar=False .*'
 ```
 
+Ignore unhealthy conditions based on when they last changed (`lastTransitionTime`), either relative to now or against a fixed timestamp. `--ignore-condition-younger-than` and `--ignore-condition-older-than` can be combined to only show conditions inside a specific age window:
+
+```console
+# Ignore noise from things that changed in the last 5 minutes.
+go run github.com/guettli/check-conditions@latest all --ignore-condition-younger-than 5m
+
+# Ignore long-standing conditions that have not changed in the last day.
+go run github.com/guettli/check-conditions@latest all --ignore-condition-older-than 24h
+
+# Only show conditions that changed between 5 minutes and 1 day ago.
+go run github.com/guettli/check-conditions@latest all --ignore-condition-younger-than 5m --ignore-condition-older-than 24h
+
+# Ignore conditions relative to a fixed point in time instead of "now".
+go run github.com/guettli/check-conditions@latest all --ignore-condition-before 2026-09-01T00:00:00Z
+go run github.com/guettli/check-conditions@latest all --ignore-condition-after 2026-09-01T00:00:00Z
+```
+
 ## Terminology
 
 Since I found not good umbrella term for CRDs and core resource types, I use the term CRD.
@@ -154,7 +171,7 @@ HTML GUI via localhost.
 Negative conditions are ok for a defined time period.
 Example: It is ok if a Pod needs 20 seconds to start.
 But it is not ok if it takes 5 minutes.
-(Implemented for pod startup via `--pod-start-grace`; still open for other conditions.)
+(Implemented for pod startup via `--pod-start-grace`; generalized to all conditions via `--ignore-condition-younger-than` / `--ignore-condition-older-than` / `--ignore-condition-before` / `--ignore-condition-after`.)
 
 To make warnings appear sooner after starting the programm
 (it takes 20 secs even for small clusters), we could
