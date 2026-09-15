@@ -665,6 +665,151 @@ func TestPrintConditionsGraceDisabled(t *testing.T) {
 	}
 }
 
+// newRestartingPod builds a Pod whose container has restarted restartCount
+// times. A non-empty reason makes it currently waiting (e.g. CrashLoopBackOff)
+// and not ready; an empty reason leaves only the restartCount set.
+func newRestartingPod(restartCount int64, reason string) unstructured.Unstructured {
+	return newPodContainerStatus("containerStatuses", restartCount, reason, reason == "")
+}
+
+// newPodContainerStatus builds a Pod with a single container status under the
+// given key (containerStatuses / initContainerStatuses / ephemeralContainerStatuses).
+// A non-empty reason sets state.waiting.reason. ready sets the ready flag.
+func newPodContainerStatus(key string, restartCount int64, reason string, ready bool) unstructured.Unstructured {
+	obj := unstructured.Unstructured{}
+	obj.SetName("crashy")
+	obj.SetNamespace("default")
+	status := map[string]interface{}{
+		"name":         "worker",
+		"restartCount": restartCount,
+		"ready":        ready,
+	}
+	if reason != "" {
+		status["state"] = map[string]interface{}{
+			"waiting": map[string]interface{}{"reason": reason},
+		}
+	}
+	_ = unstructured.SetNestedSlice(obj.Object, []interface{}{status}, "status", key)
+	return obj
+}
+
+func TestPrintResourcesWarnsRestartingContainer(t *testing.T) {
+	gvr := schema.GroupVersionResource{Resource: "pods"}
+	args := &Arguments{PodRestartWarnCount: 5}
+	obj := newRestartingPod(7, "CrashLoopBackOff")
+
+	list := &unstructured.UnstructuredList{Items: []unstructured.Unstructured{obj}}
+	counter := &handleResourceTypeOutput{}
+	lines, _ := printResources(args, list, gvr, counter, 0)
+
+	if len(lines) == 0 {
+		t.Fatal("expected a warning line for a repeatedly restarting container, got none")
+	}
+	if !strings.Contains(lines[0], "restarted 7 times") {
+		t.Errorf("expected line to mention restart count, got: %s", lines[0])
+	}
+	if !strings.Contains(lines[0], "CrashLoopBackOff") {
+		t.Errorf("expected line to mention the waiting reason, got: %s", lines[0])
+	}
+}
+
+func TestPrintResourcesNoWarnBelowRestartThreshold(t *testing.T) {
+	gvr := schema.GroupVersionResource{Resource: "pods"}
+	args := &Arguments{PodRestartWarnCount: 5}
+	obj := newRestartingPod(2, "")
+
+	list := &unstructured.UnstructuredList{Items: []unstructured.Unstructured{obj}}
+	counter := &handleResourceTypeOutput{}
+	lines, _ := printResources(args, list, gvr, counter, 0)
+
+	for _, l := range lines {
+		if strings.Contains(l, "restarted") {
+			t.Errorf("expected no restart warning below threshold, got: %s", l)
+		}
+	}
+}
+
+func TestPrintResourcesRestartCheckDisabled(t *testing.T) {
+	gvr := schema.GroupVersionResource{Resource: "pods"}
+	args := &Arguments{PodRestartWarnCount: 0}
+	obj := newRestartingPod(99, "CrashLoopBackOff")
+
+	list := &unstructured.UnstructuredList{Items: []unstructured.Unstructured{obj}}
+	counter := &handleResourceTypeOutput{}
+	lines, _ := printResources(args, list, gvr, counter, 0)
+
+	for _, l := range lines {
+		if strings.Contains(l, "restarted") {
+			t.Errorf("expected no restart warning when disabled, got: %s", l)
+		}
+	}
+}
+
+func TestPrintResourcesNoWarnRecoveredContainer(t *testing.T) {
+	// A container that restarted many times in the past but is now ready
+	// should not warn: the warning must clear once the pod is healthy again.
+	gvr := schema.GroupVersionResource{Resource: "pods"}
+	args := &Arguments{PodRestartWarnCount: 5}
+	obj := newPodContainerStatus("containerStatuses", 42, "", true)
+
+	list := &unstructured.UnstructuredList{Items: []unstructured.Unstructured{obj}}
+	counter := &handleResourceTypeOutput{}
+	lines, _ := printResources(args, list, gvr, counter, 0)
+
+	for _, l := range lines {
+		if strings.Contains(l, "restarted") {
+			t.Errorf("expected no warning for a recovered (ready) container, got: %s", l)
+		}
+	}
+}
+
+func TestPrintResourcesWarnsAtExactThreshold(t *testing.T) {
+	gvr := schema.GroupVersionResource{Resource: "pods"}
+	args := &Arguments{PodRestartWarnCount: 5}
+	obj := newPodContainerStatus("containerStatuses", 5, "CrashLoopBackOff", false)
+
+	list := &unstructured.UnstructuredList{Items: []unstructured.Unstructured{obj}}
+	counter := &handleResourceTypeOutput{}
+	lines, _ := printResources(args, list, gvr, counter, 0)
+
+	if len(lines) == 0 {
+		t.Fatal("expected a warning line at exactly the threshold (5 == 5), got none")
+	}
+}
+
+func TestPrintResourcesWarnsInitContainer(t *testing.T) {
+	gvr := schema.GroupVersionResource{Resource: "pods"}
+	args := &Arguments{PodRestartWarnCount: 5}
+	obj := newPodContainerStatus("initContainerStatuses", 8, "CrashLoopBackOff", false)
+
+	list := &unstructured.UnstructuredList{Items: []unstructured.Unstructured{obj}}
+	counter := &handleResourceTypeOutput{}
+	lines, _ := printResources(args, list, gvr, counter, 0)
+
+	if len(lines) == 0 {
+		t.Fatal("expected a warning line for a repeatedly restarting init container, got none")
+	}
+}
+
+func TestPrintResourcesWarnsNotReadyWithoutWaiting(t *testing.T) {
+	// No state.waiting, but ready=false and over threshold -> still warns,
+	// with a "not ready" descriptor since there is no waiting reason.
+	gvr := schema.GroupVersionResource{Resource: "pods"}
+	args := &Arguments{PodRestartWarnCount: 5}
+	obj := newPodContainerStatus("containerStatuses", 9, "", false)
+
+	list := &unstructured.UnstructuredList{Items: []unstructured.Unstructured{obj}}
+	counter := &handleResourceTypeOutput{}
+	lines, _ := printResources(args, list, gvr, counter, 0)
+
+	if len(lines) == 0 {
+		t.Fatal("expected a warning line for a not-ready container over the threshold, got none")
+	}
+	if !strings.Contains(lines[0], "not ready") {
+		t.Errorf("expected line to describe the container as not ready, got: %s", lines[0])
+	}
+}
+
 func TestKubeconfigSource(t *testing.T) {
 	t.Run("explicit path wins", func(t *testing.T) {
 		rules := &clientcmd.ClientConfigLoadingRules{ExplicitPath: "/tmp/explicit"}

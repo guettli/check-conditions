@@ -56,6 +56,16 @@ A Pod that just started reports `ContainersReady=False` / `Initialized=False` fo
 go run github.com/guettli/check-conditions@latest all --pod-start-grace 1m
 ```
 
+A container that starts again and again (a crash loop) is not visible in `status.conditions`, so it is checked separately. By default a Pod container (regular, init or ephemeral) is reported once it has restarted at least 5 times **and is still unhealthy** — currently waiting (e.g. `CrashLoopBackOff`) or not ready. `restartCount` is cumulative, so the "still unhealthy" gate is what lets the warning clear again once the pod recovers, instead of flagging a pod forever for a rough start weeks ago. Use `--pod-restart-warn-count` to change the threshold, or set it to `0` to disable:
+
+```console
+# Only warn once a container has restarted at least 20 times.
+go run github.com/guettli/check-conditions@latest all --pod-restart-warn-count 20
+
+# Disable the restart check entirely.
+go run github.com/guettli/check-conditions@latest all --pod-restart-warn-count 0
+```
+
 The tool ships with a built-in list of regexes for known-noisy condition lines that are always ignored. Use `--ignore-condition-regex` to add your own, on top of that list. It can be given multiple times. The regex is matched against a line built as `resource type=status reason "message"` (namespace, resource name, and duration are stripped) — run the tool once to see the exact line you want to ignore, then turn it into a pattern:
 
 ```console

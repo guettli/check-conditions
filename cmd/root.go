@@ -73,7 +73,6 @@ func init() {
 	arguments.ProgrammStartTime = time.Now()
 	rootCmd.Long = "check-conditions " + buildVersion() + "\n\n" + rootCmd.Long
 
-
 	rootCmd.PersistentFlags().BoolVarP(&arguments.Verbose, "verbose", "v", false, "Create more output")
 
 	rootCmd.PersistentFlags().DurationVarP(&arguments.Sleep, "sleep", "s", 15*time.Second, "Optional sleep duration (default: 5s)")
@@ -91,6 +90,8 @@ func init() {
 	rootCmd.PersistentFlags().DurationVar(&arguments.WarnDeletionTimestampOlderThan, "warn-deletion-older-than", 10*time.Minute, "Warn about resources whose deletionTimestamp is older than this duration. Set to 0 to disable.")
 
 	rootCmd.PersistentFlags().DurationVar(&arguments.PodStartGracePeriod, "pod-start-grace", 30*time.Second, "Treat a Pod whose ContainersReady/Initialized condition is False as healthy while it is still starting for the first time (no restarts) and younger than this duration. Set to 0 to disable.")
+
+	rootCmd.PersistentFlags().Int64Var(&arguments.PodRestartWarnCount, "pod-restart-warn-count", 5, "Warn about a Pod container (regular, init or ephemeral) that has restarted at least this many times and is still unhealthy (waiting/CrashLoopBackOff or not ready). A container that starts again and again is not visible in status.conditions. Set to 0 to disable.")
 
 	rootCmd.PersistentFlags().StringArrayVar(&ignoreConditionRegexStrings, "ignore-condition-regex", nil, "Additional regex to ignore a condition line, on top of the built-in ignore list. Can be given multiple times. Matched against: 'resource type=status reason \"message\"', e.g. 'mypods MyCondition=False MyReason .*'")
 
