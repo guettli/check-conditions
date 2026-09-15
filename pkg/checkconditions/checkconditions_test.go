@@ -531,6 +531,30 @@ func TestPrintResourcesNoWarnRecentDeletionTimestamp(t *testing.T) {
 	}
 }
 
+func TestPrintResourcesIgnoresOldDeletionTimestamp(t *testing.T) {
+	gvr := schema.GroupVersionResource{Resource: "pods"}
+	args := &Arguments{
+		WarnDeletionTimestampOlderThan: 10 * time.Minute,
+		IgnoreConditionOlderThan:       ConditionTimeThreshold{Duration: 5 * time.Hour},
+	}
+
+	oldTime := metav1.NewTime(time.Now().Add(-24 * time.Hour))
+	obj := unstructured.Unstructured{}
+	obj.SetName("long-stuck-pod")
+	obj.SetNamespace("default")
+	obj.SetDeletionTimestamp(&oldTime)
+
+	list := &unstructured.UnstructuredList{Items: []unstructured.Unstructured{obj}}
+	counter := &handleResourceTypeOutput{}
+	lines, _ := printResources(args, list, gvr, counter, 0)
+
+	for _, l := range lines {
+		if strings.Contains(l, "DeletionTimestamp") {
+			t.Errorf("expected deletionTimestamp older than --ignore-condition-older-than to be ignored, got: %s", l)
+		}
+	}
+}
+
 func TestPrintResourcesDisabledDeletionTimestampCheck(t *testing.T) {
 	gvr := schema.GroupVersionResource{Resource: "pods"}
 	args := &Arguments{
