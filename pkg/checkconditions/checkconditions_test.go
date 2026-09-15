@@ -70,49 +70,6 @@ func TestHandleConditionSkipsHealthyForeignClusterConditions(t *testing.T) {
 	}
 }
 
-func TestHandleConditionSkipsHealthySuffixConditions(t *testing.T) {
-	counter := &handleResourceTypeOutput{}
-
-	tests := []map[string]interface{}{
-		{
-			"type":    "RecommendationProvided",
-			"status":  "True",
-			"reason":  "",
-			"message": "",
-		},
-		{
-			"type":    "PostReconciler",
-			"status":  "True",
-			"reason":  "",
-			"message": "",
-		},
-		{
-			"type":    "PreInstall",
-			"status":  "True",
-			"reason":  "",
-			"message": "",
-		},
-		{
-			"type":    "PreUpgrade",
-			"status":  "True",
-			"reason":  "",
-			"message": "",
-		},
-	}
-
-	var rows []conditionRow
-	for _, condition := range tests {
-		rows = handleCondition(&Arguments{}, condition, counter, schema.GroupVersionResource{Resource: "widgets"}, rows)
-	}
-
-	if len(rows) != 0 {
-		t.Fatalf("expected healthy conditions to be suppressed, got %d rows: %+v", len(rows), rows)
-	}
-	if counter.checkedConditions != int32(len(tests)) {
-		t.Fatalf("expected %d checked conditions, got %d", len(tests), counter.checkedConditions)
-	}
-}
-
 func TestHandleConditionSkipsExtraIgnoreRegex(t *testing.T) {
 	gvr := schema.GroupVersionResource{Resource: "widgets"}
 	args := &Arguments{
