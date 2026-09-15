@@ -621,7 +621,8 @@ func printResources(args *Arguments, list *unstructured.UnstructuredList, gvr sc
 		}
 		counter.checkedResources++
 		if args.WarnDeletionTimestampOlderThan > 0 {
-			if dt := obj.GetDeletionTimestamp(); dt != nil && !dt.IsZero() {
+			if dt := obj.GetDeletionTimestamp(); dt != nil && !dt.IsZero() &&
+				!args.conditionOutsideTimeWindow(dt.Time) {
 				age := time.Since(dt.Time)
 				if age > args.WarnDeletionTimestampOlderThan {
 					line := fmt.Sprintf("  %s %s %s DeletionTimestamp set for %s",
