@@ -194,4 +194,6 @@ The most simple way would be to use Go code.
 
 ## Related
 
-[guettli/watchall: Watch all Kubernetes Resources](https://github.com/guettli/watchall)
+- [dumpall](https://github.com/guettli/dumpall) Dump all Kubernetes resources into a directory structure.
+- [korphan](https://github.com/guettli/korphan) Find orphaned Kubernetes resources — those managed by neither a controller nor a GitOps tool.
+- [guettli/watchall: Watch all Kubernetes Resources](https://github.com/guettli/watchall)
