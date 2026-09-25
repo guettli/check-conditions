@@ -6,6 +6,12 @@ Takes only few milliseconds for small clusters running on localhost. Might take 
 
 Please provide feedback, PRs are welcome.
 
+## Installation
+
+```console
+go install github.com/guettli/check-conditions@latest
+```
+
 ## Background and Goal
 
 I develop Kubernetes controllers in Go. I develop software since ages,
