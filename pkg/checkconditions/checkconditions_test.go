@@ -70,6 +70,91 @@ func TestHandleConditionSkipsHealthyForeignClusterConditions(t *testing.T) {
 	}
 }
 
+func TestHandleConditionSkipsHealthyLiqoConditions(t *testing.T) {
+	tests := []struct {
+		resource  string
+		condition map[string]interface{}
+	}{
+		{
+			resource: "configurations",
+			condition: map[string]interface{}{
+				"type":    "NetworkCIDRsConfigured",
+				"status":  "True",
+				"reason":  "NetworkCIDRsConfigured",
+				"message": "All network CIDRs are configured",
+			},
+		},
+		{
+			resource: "resourceslices",
+			condition: map[string]interface{}{
+				"type":    "Authentication",
+				"status":  "Accepted",
+				"reason":  "ResourceSliceAuthenticationAccepted",
+				"message": "ResourceSlice authentication accepted",
+			},
+		},
+		{
+			resource: "resourceslices",
+			condition: map[string]interface{}{
+				"type":    "Resources",
+				"status":  "Accepted",
+				"reason":  "ResourceSliceResourcesAccepted",
+				"message": "ResourceSlice resources accepted",
+			},
+		},
+		{
+			resource:  "virtualnodes",
+			condition: map[string]interface{}{"type": "Node", "status": "Running", "reason": "", "message": ""},
+		},
+		{
+			resource:  "virtualnodes",
+			condition: map[string]interface{}{"type": "VirtualKubelet", "status": "Running", "reason": "", "message": ""},
+		},
+	}
+
+	for _, tc := range tests {
+		gvr := schema.GroupVersionResource{Resource: tc.resource}
+		counter := &handleResourceTypeOutput{}
+		var rows []conditionRow
+		rows = handleCondition(&Arguments{}, tc.condition, counter, gvr, rows)
+		if len(rows) != 0 {
+			t.Fatalf("expected healthy liqo %s condition %v to be suppressed, got %d rows", tc.resource, tc.condition["type"], len(rows))
+		}
+	}
+}
+
+func TestHandleConditionReportsUnhealthyLiqoConditions(t *testing.T) {
+	// The ignore regexes pin the healthy status value, so a liqo condition in
+	// any other state must still be reported.
+	tests := []struct {
+		resource  string
+		condition map[string]interface{}
+	}{
+		{
+			resource:  "resourceslices",
+			condition: map[string]interface{}{"type": "Authentication", "status": "Denied", "reason": "ResourceSliceAuthenticationDenied", "message": "authentication denied"},
+		},
+		{
+			resource:  "virtualnodes",
+			condition: map[string]interface{}{"type": "VirtualKubelet", "status": "None", "reason": "", "message": ""},
+		},
+		{
+			resource:  "configurations",
+			condition: map[string]interface{}{"type": "NetworkCIDRsConfigured", "status": "False", "reason": "NetworkCIDRsNotConfigured", "message": "network CIDRs not configured"},
+		},
+	}
+
+	for _, tc := range tests {
+		gvr := schema.GroupVersionResource{Resource: tc.resource}
+		counter := &handleResourceTypeOutput{}
+		var rows []conditionRow
+		rows = handleCondition(&Arguments{}, tc.condition, counter, gvr, rows)
+		if len(rows) != 1 {
+			t.Fatalf("expected unhealthy liqo %s condition %v to be reported, got %d rows", tc.resource, tc.condition["type"], len(rows))
+		}
+	}
+}
+
 func TestHandleConditionSkipsExtraIgnoreRegex(t *testing.T) {
 	gvr := schema.GroupVersionResource{Resource: "widgets"}
 	args := &Arguments{

@@ -1131,6 +1131,16 @@ var conditionLinesToIgnoreRegexs = []*regexp.Regexp{
 
 	// liqo
 	regexp.MustCompile(`foreignclusters APIServerStatus=Established`),
+	// liqo reports health via non-boolean status values ("Accepted", "Running")
+	// and a NetworkCIDRsConfigured=True condition that is not in the positive
+	// suffix list, so these healthy states would otherwise be flagged. Each
+	// regex pins the healthy value: an unhealthy liqo condition (e.g.
+	// Authentication=Denied, a virtualnode not Running) has a different status
+	// and is still reported.
+	regexp.MustCompile(`configurations NetworkCIDRsConfigured=True NetworkCIDRsConfigured`),          // networking.liqo.io
+	regexp.MustCompile(`resourceslices Authentication=Accepted ResourceSliceAuthenticationAccepted`), // authentication.liqo.io
+	regexp.MustCompile(`resourceslices Resources=Accepted ResourceSliceResourcesAccepted`),           // authentication.liqo.io
+	regexp.MustCompile(`virtualnodes (Node|VirtualKubelet)=Running `),                                // offloading.liqo.io
 
 	// Tigera / Calico operator
 	regexp.MustCompile(`tigerastatuses Progressing=False AllObjectsAvailable`),
