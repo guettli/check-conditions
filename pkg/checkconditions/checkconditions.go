@@ -1010,7 +1010,6 @@ var conditionTypesOfResourceWithPositiveMeaning = map[string][]string{
 		"ConsistentSystemID",    // postgresql.cnpg.io/v1
 		"ContinuousArchiving",   // postgresql.cnpg.io/v1
 		"RemoteConnectionProbe", // capi
-		"Connected",             // Connected=True means the cluster link is up.
 	},
 	"clusteraddons": {
 		"ClusterAddonConfigValidated",
@@ -1041,27 +1040,29 @@ var conditionTypesOfResourceWithPositiveMeaning = map[string][]string{
 	"applicationsets": {
 		"ParametersGenerated",
 	},
-	"compositionrevisions": { // apiextensions.crossplane.io
-		"ValidPipeline", // ValidPipeline=True means the composition pipeline is valid.
-	},
-	"locks": { // pkg.crossplane.io
-		"Resolved", // Resolved=True means dependency resolution succeeded.
-	},
-	"workloads": {
-		"Responsive", // Responsive=True means the watch circuit is closed (healthy).
-	},
-	"legacyworkloads": {
-		"Responsive", // Responsive=True means the watch circuit is closed (healthy).
-	},
-	"orphans": { // Longhorn
-		"DataCleanable", // DataCleanable=True is an informational state, not a problem.
-	},
+}
+
+// conditionTypesWithPositiveMeaningAnyResource lists condition types whose
+// polarity is positive regardless of the resource: status True is healthy, so
+// only a non-True value is reported. Matched exactly (not as a suffix), so a
+// negated form such as Disconnected/Unresolved/Unresponsive is NOT covered and
+// is still reported.
+var conditionTypesWithPositiveMeaningAnyResource = []string{
+	"Connected",     // link/cluster is connected
+	"DataCleanable", // Longhorn: informational, not a problem
+	"Resolved",      // dependency resolution succeeded (e.g. crossplane locks)
+	"Responsive",    // watch circuit closed / responsive
+	"ValidPipeline", // crossplane composition pipeline is valid
+}
+
+// conditionTypesWithNegativeMeaningAnyResource lists condition types whose
+// polarity is negative regardless of the resource: status False is healthy, so
+// only a non-False value is reported. Matched exactly.
+var conditionTypesWithNegativeMeaningAnyResource = []string{
+	"Error", // an Error condition is only interesting when not False
 }
 
 var conditionTypesOfResourceWithNegativeMeaning = map[string][]string{
-	"orphans": { // Longhorn
-		"Error", // Error=False means the orphan has no error.
-	},
 	"nodes": {
 		"KernelDeadlock",
 		"ReadonlyFilesystem",
@@ -1167,6 +1168,9 @@ var conditionLinesToIgnoreRegexs = []*regexp.Regexp{
 }
 
 func conditionTypeHasPositiveMeaning(resource string, ct string) bool {
+	if slices.Contains(conditionTypesWithPositiveMeaningAnyResource, ct) {
+		return true
+	}
 	types := conditionTypesOfResourceWithPositiveMeaning[resource]
 	if slices.Contains(types, ct) {
 		return true
@@ -1244,6 +1248,9 @@ func conditionDone(conditionType string, conditionStatus string, conditionReason
 }
 
 func conditionTypeHasNegativeMeaning(resource string, ct string) bool {
+	if slices.Contains(conditionTypesWithNegativeMeaningAnyResource, ct) {
+		return true
+	}
 	types := conditionTypesOfResourceWithNegativeMeaning[resource]
 	if slices.Contains(types, ct) {
 		return true
