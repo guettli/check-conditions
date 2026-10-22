@@ -1010,6 +1010,7 @@ var conditionTypesOfResourceWithPositiveMeaning = map[string][]string{
 		"ConsistentSystemID",    // postgresql.cnpg.io/v1
 		"ContinuousArchiving",   // postgresql.cnpg.io/v1
 		"RemoteConnectionProbe", // capi
+		"Connected",             // Connected=True means the cluster link is up.
 	},
 	"clusteraddons": {
 		"ClusterAddonConfigValidated",
@@ -1040,9 +1041,27 @@ var conditionTypesOfResourceWithPositiveMeaning = map[string][]string{
 	"applicationsets": {
 		"ParametersGenerated",
 	},
+	"compositionrevisions": { // apiextensions.crossplane.io
+		"ValidPipeline", // ValidPipeline=True means the composition pipeline is valid.
+	},
+	"locks": { // pkg.crossplane.io
+		"Resolved", // Resolved=True means dependency resolution succeeded.
+	},
+	"workloads": {
+		"Responsive", // Responsive=True means the watch circuit is closed (healthy).
+	},
+	"legacyworkloads": {
+		"Responsive", // Responsive=True means the watch circuit is closed (healthy).
+	},
+	"orphans": { // Longhorn
+		"DataCleanable", // DataCleanable=True is an informational state, not a problem.
+	},
 }
 
 var conditionTypesOfResourceWithNegativeMeaning = map[string][]string{
+	"orphans": { // Longhorn
+		"Error", // Error=False means the orphan has no error.
+	},
 	"nodes": {
 		"KernelDeadlock",
 		"ReadonlyFilesystem",
