@@ -155,6 +155,92 @@ func TestHandleConditionReportsUnhealthyLiqoConditions(t *testing.T) {
 	}
 }
 
+func TestHandleConditionSkipsHealthyCrossplaneAndWorkloadConditions(t *testing.T) {
+	tests := []struct {
+		resource  string
+		condition map[string]interface{}
+	}{
+		{
+			resource:  "clusters",
+			condition: map[string]interface{}{"type": "Connected", "status": "True", "reason": "", "message": ""},
+		},
+		{
+			resource:  "compositionrevisions",
+			condition: map[string]interface{}{"type": "ValidPipeline", "status": "True", "reason": "ValidPipeline", "message": ""},
+		},
+		{
+			resource:  "locks",
+			condition: map[string]interface{}{"type": "Resolved", "status": "True", "reason": "DependencyResolutionSucceeded", "message": ""},
+		},
+		{
+			resource:  "workloads",
+			condition: map[string]interface{}{"type": "Responsive", "status": "True", "reason": "WatchCircuitClosed", "message": ""},
+		},
+		{
+			resource:  "legacyworkloads",
+			condition: map[string]interface{}{"type": "Responsive", "status": "True", "reason": "WatchCircuitClosed", "message": ""},
+		},
+		{
+			resource:  "orphans",
+			condition: map[string]interface{}{"type": "DataCleanable", "status": "True", "reason": "", "message": ""},
+		},
+		{
+			resource:  "orphans",
+			condition: map[string]interface{}{"type": "Error", "status": "False", "reason": "", "message": ""},
+		},
+	}
+
+	for _, tc := range tests {
+		gvr := schema.GroupVersionResource{Resource: tc.resource}
+		counter := &handleResourceTypeOutput{}
+		var rows []conditionRow
+		rows = handleCondition(&Arguments{}, tc.condition, counter, gvr, rows)
+		if len(rows) != 0 {
+			t.Fatalf("expected healthy %s condition %v to be suppressed, got %d rows", tc.resource, tc.condition["type"], len(rows))
+		}
+	}
+}
+
+func TestHandleConditionReportsUnhealthyCrossplaneAndWorkloadConditions(t *testing.T) {
+	// The positive/negative polarity only suppresses the healthy value, so a
+	// condition in the opposite state must still be reported.
+	tests := []struct {
+		resource  string
+		condition map[string]interface{}
+	}{
+		{
+			resource:  "clusters",
+			condition: map[string]interface{}{"type": "Connected", "status": "False", "reason": "Disconnected", "message": "cluster link down"},
+		},
+		{
+			resource:  "compositionrevisions",
+			condition: map[string]interface{}{"type": "ValidPipeline", "status": "False", "reason": "InvalidPipeline", "message": "pipeline invalid"},
+		},
+		{
+			resource:  "locks",
+			condition: map[string]interface{}{"type": "Resolved", "status": "False", "reason": "DependencyResolutionFailed", "message": "resolution failed"},
+		},
+		{
+			resource:  "workloads",
+			condition: map[string]interface{}{"type": "Responsive", "status": "False", "reason": "WatchCircuitOpen", "message": "not responsive"},
+		},
+		{
+			resource:  "orphans",
+			condition: map[string]interface{}{"type": "Error", "status": "True", "reason": "Failed", "message": "orphan error"},
+		},
+	}
+
+	for _, tc := range tests {
+		gvr := schema.GroupVersionResource{Resource: tc.resource}
+		counter := &handleResourceTypeOutput{}
+		var rows []conditionRow
+		rows = handleCondition(&Arguments{}, tc.condition, counter, gvr, rows)
+		if len(rows) != 1 {
+			t.Fatalf("expected unhealthy %s condition %v to be reported, got %d rows", tc.resource, tc.condition["type"], len(rows))
+		}
+	}
+}
+
 func TestHandleConditionSkipsExtraIgnoreRegex(t *testing.T) {
 	gvr := schema.GroupVersionResource{Resource: "widgets"}
 	args := &Arguments{
