@@ -8,12 +8,12 @@ import (
 	"os"
 	"path"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"time"
 
-	"golang.org/x/exp/slices"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
+		apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -109,8 +109,7 @@ func ParseConditionTimeThreshold(s string) (ConditionTimeThreshold, error) {
 
 // conditionOutsideTimeWindow reports whether t is excluded by the active
 // --ignore-condition-younger-than / --ignore-condition-older-than filters.
-func (a *Arguments) conditionOutsideTimeWindow(t time.Time) bool {
-	now := time.Now()
+func (a *Arguments) conditionOutsideTimeWindow(t, now time.Time) bool {
 	if younger := a.IgnoreConditionYoungerThan; !younger.IsZero() {
 		if younger.Duration > 0 && now.Sub(t) < younger.Duration {
 			return true
@@ -607,6 +606,7 @@ func containsSlash(s string) bool {
 func printResources(args *Arguments, list *unstructured.UnstructuredList, gvr schema.GroupVersionResource,
 	counter *handleResourceTypeOutput, workerID int32,
 ) (lines []string, again bool) {
+	now := time.Now()
 	// When the user supplied multiple include namespaces (or globs), we list
 	// resources cluster-wide and drop the ones not in the resolved set. A
 	// single include is already filtered server-side. Excludes always apply
@@ -615,7 +615,8 @@ func printResources(args *Arguments, list *unstructured.UnstructuredList, gvr sc
 	if len(args.Namespaces) > 1 {
 		nsInclude = args.namespaceSet()
 	}
-	for _, obj := range list.Items {
+	for i := range list.Items {
+		obj := &list.Items[i]
 		ns := obj.GetNamespace()
 		if nsInclude != nil {
 			if _, ok := nsInclude[ns]; !ok {
@@ -626,50 +627,7 @@ func printResources(args *Arguments, list *unstructured.UnstructuredList, gvr sc
 			continue
 		}
 		counter.checkedResources++
-		if args.WarnDeletionTimestampOlderThan > 0 {
-			if dt := obj.GetDeletionTimestamp(); dt != nil && !dt.IsZero() &&
-				!args.conditionOutsideTimeWindow(dt.Time) {
-				age := time.Since(dt.Time)
-				if age > args.WarnDeletionTimestampOlderThan {
-					line := fmt.Sprintf("  %s %s %s DeletionTimestamp set for %s",
-						obj.GetNamespace(), gvr.Resource, obj.GetName(), age.Round(time.Second))
-					if args.WhileRegex == nil || args.WhileRegex.MatchString(line) {
-						if args.WhileRegex != nil {
-							again = true
-						}
-						lines = append(lines, line)
-					}
-				}
-			}
-		}
-		if gvr.Resource == "pods" && args.PodRestartWarnCount > 0 {
-			for _, line := range podRestartWarningLines(obj, gvr.Resource, args.PodRestartWarnCount) {
-				if args.WhileRegex == nil || args.WhileRegex.MatchString(line) {
-					if args.WhileRegex != nil {
-						again = true
-					}
-					lines = append(lines, line)
-				}
-			}
-		}
-		var conditions []interface{}
-		var err error
-		if gvr.Resource == "hetznerbaremetalhosts" {
-			// For some reasons this resource stores the conditions differently
-			conditions, _, err = unstructured.NestedSlice(obj.Object, "spec", "status", "conditions")
-		} else {
-			conditions, _, err = unstructured.NestedSlice(obj.Object, "status", "conditions")
-		}
-		if err != nil {
-			if strings.Contains(err.Error(), "<nil> is of the type <nil>") {
-				// If we read the manifest before the controller created conditions, then
-				// this can happen.
-				continue
-			}
-			lines = append(lines, fmt.Sprintf("err of unstructured.NestedSlice(%+v): %s",
-				obj.Object, err.Error()))
-		}
-		subLines, a := printConditions(args, conditions, counter, gvr, obj)
+		subLines, a := args.findingsToLines(args.objectFindings(obj, gvr, counter, now), now)
 		if a {
 			again = true
 		}
@@ -679,6 +637,65 @@ func printResources(args *Arguments, list *unstructured.UnstructuredList, gvr sc
 		fmt.Printf("    checked %s %s %s workerID=%d\n", gvr.Resource, gvr.Group, gvr.Version, workerID)
 	}
 	return lines, again
+}
+
+// findingsToLines formats findings as output lines. With --while, only
+// findings matching the regex are kept, and again reports whether any did.
+func (a *Arguments) findingsToLines(findings []Finding, now time.Time) (lines []string, again bool) {
+	for i := range findings {
+		f := &findings[i]
+		if a.WhileRegex == nil {
+			lines = append(lines, f.Line(now))
+			continue
+		}
+		for _, candidate := range f.whileCandidateLines(now) {
+			if a.WhileRegex.MatchString(candidate) {
+				again = true
+				lines = append(lines, f.Line(now))
+				break
+			}
+		}
+	}
+	return lines, again
+}
+
+// objectFindings returns all findings of one object: an old deletionTimestamp,
+// repeatedly restarting Pod containers and unhealthy conditions.
+func (a *Arguments) objectFindings(obj *unstructured.Unstructured, gvr schema.GroupVersionResource,
+	counter *handleResourceTypeOutput, now time.Time,
+) []Finding {
+	var findings []Finding
+	if a.WarnDeletionTimestampOlderThan > 0 {
+		if dt := obj.GetDeletionTimestamp(); dt != nil && !dt.IsZero() &&
+			!a.conditionOutsideTimeWindow(dt.Time, now) &&
+			now.Sub(dt.Time) > a.WarnDeletionTimestampOlderThan {
+			f := newFinding(obj, gvr, FindingDeletionTimestamp)
+			f.LastTransitionTime = dt.Time
+			findings = append(findings, f)
+		}
+	}
+	if gvr.Resource == "pods" && a.PodRestartWarnCount > 0 {
+		findings = append(findings, podRestartFindings(obj, gvr, a.PodRestartWarnCount)...)
+	}
+	var conditions []interface{}
+	var err error
+	if gvr.Resource == "hetznerbaremetalhosts" {
+		// For some reasons this resource stores the conditions differently
+		conditions, _, err = unstructured.NestedSlice(obj.Object, "spec", "status", "conditions")
+	} else {
+		conditions, _, err = unstructured.NestedSlice(obj.Object, "status", "conditions")
+	}
+	if err != nil {
+		if strings.Contains(err.Error(), "<nil> is of the type <nil>") {
+			// If we read the manifest before the controller created conditions, then
+			// this can happen.
+			return findings
+		}
+		f := newFinding(obj, gvr, FindingError)
+		f.Message = fmt.Sprintf("err of unstructured.NestedSlice(%+v): %s", obj.Object, err.Error())
+		findings = append(findings, f)
+	}
+	return append(findings, conditionFindings(a, conditions, counter, gvr, obj, now)...)
 }
 
 type conditionRow struct {
@@ -695,17 +712,26 @@ var readyString = "Ready"
 func printConditions(args *Arguments, conditions []interface{}, counter *handleResourceTypeOutput,
 	gvr schema.GroupVersionResource, obj unstructured.Unstructured,
 ) (lines []string, again bool) {
+	now := time.Now()
+	return args.findingsToLines(conditionFindings(args, conditions, counter, gvr, &obj, now), now)
+}
+
+// conditionFindings returns one finding per group of unhealthy conditions that
+// share the same status, reason and message.
+func conditionFindings(args *Arguments, conditions []interface{}, counter *handleResourceTypeOutput,
+	gvr schema.GroupVersionResource, obj *unstructured.Unstructured, now time.Time,
+) []Finding {
 	var rows []conditionRow
 	for _, condition := range conditions {
-		rows = handleCondition(args, condition, counter, gvr, rows)
+		rows = handleCondition(args, condition, counter, gvr, rows, now)
 	}
 	// Suppress "pod is still starting" noise: while a pod is starting for the
 	// first time (no restarts), a recent ContainersReady=False / Initialized=False
 	// is expected and not worth reporting.
-	if gvr.Resource == "pods" && args.PodStartGracePeriod > 0 && podHasNoRestarts(obj) {
+	if gvr.Resource == "pods" && args.PodStartGracePeriod > 0 && podHasNoRestarts(*obj) {
 		filtered := rows[:0]
 		for _, r := range rows {
-			if podStartingCondition(r, args.PodStartGracePeriod) {
+			if podStartingCondition(r, args.PodStartGracePeriod, now) {
 				continue
 			}
 			filtered = append(filtered, r)
@@ -763,62 +789,29 @@ func printConditions(args *Arguments, conditions []interface{}, counter *handleR
 		}
 	}
 
+	findings := make([]Finding, 0, len(order))
 	for _, k := range order {
 		e := byKey[k]
 		slices.Sort(e.types)
-		r := e.row
-		r.conditionType = strings.Join(e.types, "/")
-
-		duration := ""
-		if !r.conditionLastTransitionTime.IsZero() {
-			d := time.Since(r.conditionLastTransitionTime)
-			duration = fmt.Sprint(d.Round(time.Second))
+		f := newFinding(obj, gvr, FindingCondition)
+		f.ConditionTypes = e.types
+		f.Status = e.row.conditionStatus
+		f.Reason = e.row.conditionReason
+		f.Message = e.row.conditionMessage
+		f.LastTransitionTime = e.row.conditionLastTransitionTime
+		if gvr.Resource == "deployments" && f.Reason == "MinimumReplicasUnavailable" {
+			f.Detail = deploymentReplicaDetail(*obj)
 		}
-
-		detail := ""
-		if gvr.Resource == "deployments" && r.conditionReason == "MinimumReplicasUnavailable" {
-			if d := deploymentReplicaDetail(obj); d != "" {
-				detail = " " + d
-			}
-		}
-
-		outLine := fmt.Sprintf("  %s %s %s Condition %s=%s %s %q (%s)%s", obj.GetNamespace(), gvr.Resource, obj.GetName(), r.conditionType, r.conditionStatus,
-			r.conditionReason, r.conditionMessage, duration, detail)
-
-		addLine := true
-		if args.WhileRegex != nil {
-			addLine = false
-			// Check each individual type for backward compatibility with --while regexes
-			// that match on a specific condition type name (e.g. "Failed=True").
-			for _, t := range e.types {
-				singleLine := fmt.Sprintf("  %s %s %s Condition %s=%s %s %q (%s)%s",
-					obj.GetNamespace(), gvr.Resource, obj.GetName(),
-					t, r.conditionStatus, r.conditionReason, r.conditionMessage, duration, detail)
-				if args.WhileRegex.MatchString(singleLine) {
-					again = true
-					addLine = true
-					break
-				}
-			}
-			// Also check the merged line (handles regexes that match the combined type string).
-			if !addLine && args.WhileRegex.MatchString(outLine) {
-				again = true
-				addLine = true
-			}
-		}
-
-		if addLine {
-			lines = append(lines, outLine)
-		}
+		findings = append(findings, f)
 	}
-	return lines, again
+	return findings
 }
 
 // podStartingCondition reports whether a condition row is a pod that is still
 // starting for the first time: a ContainersReady/Initialized condition that is
 // False and younger than the grace period. A missing lastTransitionTime is left
 // untouched (reported) so nothing is hidden without evidence it is recent.
-func podStartingCondition(r conditionRow, grace time.Duration) bool {
+func podStartingCondition(r conditionRow, grace time.Duration, now time.Time) bool {
 	if r.conditionStatus != "False" {
 		return false
 	}
@@ -828,10 +821,10 @@ func podStartingCondition(r conditionRow, grace time.Duration) bool {
 	if r.conditionLastTransitionTime.IsZero() {
 		return false
 	}
-	return time.Since(r.conditionLastTransitionTime) < grace
+	return now.Sub(r.conditionLastTransitionTime) < grace
 }
 
-// podRestartWarningLines returns one warning line per Pod container (regular,
+// podRestartFindings returns one finding per Pod container (regular,
 // init or ephemeral) that has restarted at least warnCount times AND is still
 // unhealthy right now. A container that keeps restarting is not visible in
 // status.conditions, so it is surfaced here. "Unhealthy right now" means the
@@ -839,8 +832,8 @@ func podStartingCondition(r conditionRow, grace time.Duration) bool {
 // recovers and becomes ready the warning clears, matching the tool's rule that
 // a warning disappears as soon as the desired state is reached. restartCount is
 // cumulative, so without this gate a long-recovered pod would warn forever.
-func podRestartWarningLines(obj unstructured.Unstructured, resource string, warnCount int64) []string {
-	var lines []string
+func podRestartFindings(obj *unstructured.Unstructured, gvr schema.GroupVersionResource, warnCount int64) []Finding {
+	var findings []Finding
 	for _, key := range []string{"containerStatuses", "initContainerStatuses", "ephemeralContainerStatuses"} {
 		statuses, _, err := unstructured.NestedSlice(obj.Object, "status", key)
 		if err != nil {
@@ -873,11 +866,14 @@ func podRestartWarningLines(obj unstructured.Unstructured, resource string, warn
 			if name == "" {
 				name = "<unknown>"
 			}
-			lines = append(lines, fmt.Sprintf("  %s %s %s container %s restarted %d times, currently %s",
-				obj.GetNamespace(), resource, obj.GetName(), name, restarts, state))
+			f := newFinding(obj, gvr, FindingContainerRestarts)
+			f.Container = name
+			f.RestartCount = restarts
+			f.State = state
+			findings = append(findings, f)
 		}
 	}
-	return lines
+	return findings
 }
 
 // podHasNoRestarts reports whether none of the pod's containers have restarted
@@ -922,7 +918,7 @@ func deploymentReplicaDetail(obj unstructured.Unstructured) string {
 	return fmt.Sprintf("available %d/%d", available, desired)
 }
 
-func handleCondition(args *Arguments, condition interface{}, counter *handleResourceTypeOutput, gvr schema.GroupVersionResource, rows []conditionRow) []conditionRow {
+func handleCondition(args *Arguments, condition interface{}, counter *handleResourceTypeOutput, gvr schema.GroupVersionResource, rows []conditionRow, now time.Time) []conditionRow {
 	conditionMap, ok := condition.(map[string]interface{})
 	if !ok {
 		fmt.Println("Invalid condition format")
@@ -966,7 +962,7 @@ func handleCondition(args *Arguments, condition interface{}, counter *handleReso
 	if s != "" {
 		conditionLastTransitionTime, _ = time.Parse(time.RFC3339, s)
 	}
-	if !conditionLastTransitionTime.IsZero() && args.conditionOutsideTimeWindow(conditionLastTransitionTime) {
+	if !conditionLastTransitionTime.IsZero() && args.conditionOutsideTimeWindow(conditionLastTransitionTime, now) {
 		return rows
 	}
 	rows = append(rows, conditionRow{
@@ -1296,11 +1292,7 @@ func handleResourceType(ctx context.Context, input handleResourceTypeInput) hand
 	name := input.gvr.Resource
 	dynClient := input.dynClient
 	gvr := input.gvr
-	// Skip subresources like pod/logs, pod/status
-	if containsSlash(name) {
-		return output
-	}
-	if slices.Contains(resourcesToSkip, gvr.GroupResource()) {
+	if SkipResource(gvr.GroupResource()) {
 		return output
 	}
 
