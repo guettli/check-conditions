@@ -33,7 +33,7 @@ func TestHandleConditionSkipsHealthyMachineConditions(t *testing.T) {
 
 	var rows []conditionRow
 	for _, condition := range tests {
-		rows = handleCondition(&Arguments{}, condition, counter, gvr, rows)
+		rows = handleCondition(&Arguments{}, condition, counter, gvr, rows, time.Now())
 	}
 
 	if len(rows) != 0 {
@@ -59,7 +59,7 @@ func TestHandleConditionSkipsHealthyForeignClusterConditions(t *testing.T) {
 
 	var rows []conditionRow
 	for _, condition := range tests {
-		rows = handleCondition(&Arguments{}, condition, counter, gvr, rows)
+		rows = handleCondition(&Arguments{}, condition, counter, gvr, rows, time.Now())
 	}
 
 	if len(rows) != 0 {
@@ -116,7 +116,7 @@ func TestHandleConditionSkipsHealthyLiqoConditions(t *testing.T) {
 		gvr := schema.GroupVersionResource{Resource: tc.resource}
 		counter := &handleResourceTypeOutput{}
 		var rows []conditionRow
-		rows = handleCondition(&Arguments{}, tc.condition, counter, gvr, rows)
+		rows = handleCondition(&Arguments{}, tc.condition, counter, gvr, rows, time.Now())
 		if len(rows) != 0 {
 			t.Fatalf("expected healthy liqo %s condition %v to be suppressed, got %d rows", tc.resource, tc.condition["type"], len(rows))
 		}
@@ -148,7 +148,7 @@ func TestHandleConditionReportsUnhealthyLiqoConditions(t *testing.T) {
 		gvr := schema.GroupVersionResource{Resource: tc.resource}
 		counter := &handleResourceTypeOutput{}
 		var rows []conditionRow
-		rows = handleCondition(&Arguments{}, tc.condition, counter, gvr, rows)
+		rows = handleCondition(&Arguments{}, tc.condition, counter, gvr, rows, time.Now())
 		if len(rows) != 1 {
 			t.Fatalf("expected unhealthy liqo %s condition %v to be reported, got %d rows", tc.resource, tc.condition["type"], len(rows))
 		}
@@ -170,7 +170,7 @@ func TestHandleConditionSuppressesAnyResourceHealthyConditions(t *testing.T) {
 		gvr := schema.GroupVersionResource{Resource: "widgets"}
 		counter := &handleResourceTypeOutput{}
 		var rows []conditionRow
-		rows = handleCondition(&Arguments{}, c, counter, gvr, rows)
+		rows = handleCondition(&Arguments{}, c, counter, gvr, rows, time.Now())
 		if len(rows) != 0 {
 			t.Fatalf("expected %v on an arbitrary resource to be suppressed, got %d rows", c, len(rows))
 		}
@@ -195,7 +195,7 @@ func TestHandleConditionReportsAnyResourceProblemAndNegatedForms(t *testing.T) {
 		gvr := schema.GroupVersionResource{Resource: "widgets"}
 		counter := &handleResourceTypeOutput{}
 		var rows []conditionRow
-		rows = handleCondition(&Arguments{}, c, counter, gvr, rows)
+		rows = handleCondition(&Arguments{}, c, counter, gvr, rows, time.Now())
 		if len(rows) != 1 {
 			t.Fatalf("expected %v to be reported, got %d rows", c, len(rows))
 		}
@@ -225,11 +225,11 @@ func TestHandleConditionSkipsExtraIgnoreRegex(t *testing.T) {
 
 	var rows []conditionRow
 	counter := &handleResourceTypeOutput{}
-	rows = handleCondition(args, ignored, counter, gvr, rows)
+	rows = handleCondition(args, ignored, counter, gvr, rows, time.Now())
 	if len(rows) != 0 {
 		t.Fatalf("expected condition matching ExtraConditionLinesToIgnoreRegexs to be suppressed, got %d rows", len(rows))
 	}
-	rows = handleCondition(args, notIgnored, counter, gvr, rows)
+	rows = handleCondition(args, notIgnored, counter, gvr, rows, time.Now())
 	if len(rows) != 1 {
 		t.Fatalf("expected non-matching condition to be reported, got %d rows", len(rows))
 	}
@@ -250,11 +250,11 @@ func TestHandleConditionIgnoreConditionYoungerThan(t *testing.T) {
 	}
 
 	var rows []conditionRow
-	rows = handleCondition(args, recent, counter, gvr, rows)
+	rows = handleCondition(args, recent, counter, gvr, rows, time.Now())
 	if len(rows) != 0 {
 		t.Fatalf("expected condition younger than 1h to be ignored, got %d rows", len(rows))
 	}
-	rows = handleCondition(args, old, counter, gvr, rows)
+	rows = handleCondition(args, old, counter, gvr, rows, time.Now())
 	if len(rows) != 1 {
 		t.Fatalf("expected condition older than 1h to be reported, got %d rows", len(rows))
 	}
@@ -275,11 +275,11 @@ func TestHandleConditionIgnoreConditionOlderThan(t *testing.T) {
 	}
 
 	var rows []conditionRow
-	rows = handleCondition(args, old, counter, gvr, rows)
+	rows = handleCondition(args, old, counter, gvr, rows, time.Now())
 	if len(rows) != 0 {
 		t.Fatalf("expected condition older than 1h to be ignored, got %d rows", len(rows))
 	}
-	rows = handleCondition(args, recent, counter, gvr, rows)
+	rows = handleCondition(args, recent, counter, gvr, rows, time.Now())
 	if len(rows) != 1 {
 		t.Fatalf("expected condition younger than 1h to be reported, got %d rows", len(rows))
 	}
@@ -302,11 +302,11 @@ func TestHandleConditionIgnoreConditionAbsoluteTimestamp(t *testing.T) {
 	// --ignore-condition-older-than <timestamp> ignores conditions before it.
 	argsOlderThan := &Arguments{IgnoreConditionOlderThan: ConditionTimeThreshold{Absolute: cutoff}}
 	var rows []conditionRow
-	rows = handleCondition(argsOlderThan, before, counter, gvr, rows)
+	rows = handleCondition(argsOlderThan, before, counter, gvr, rows, time.Now())
 	if len(rows) != 0 {
 		t.Fatalf("expected condition before cutoff to be ignored, got %d rows", len(rows))
 	}
-	rows = handleCondition(argsOlderThan, after, counter, gvr, rows)
+	rows = handleCondition(argsOlderThan, after, counter, gvr, rows, time.Now())
 	if len(rows) != 1 {
 		t.Fatalf("expected condition after cutoff to be reported, got %d rows", len(rows))
 	}
@@ -314,11 +314,11 @@ func TestHandleConditionIgnoreConditionAbsoluteTimestamp(t *testing.T) {
 	// --ignore-condition-younger-than <timestamp> ignores conditions after it.
 	argsYoungerThan := &Arguments{IgnoreConditionYoungerThan: ConditionTimeThreshold{Absolute: cutoff}}
 	rows = nil
-	rows = handleCondition(argsYoungerThan, after, counter, gvr, rows)
+	rows = handleCondition(argsYoungerThan, after, counter, gvr, rows, time.Now())
 	if len(rows) != 0 {
 		t.Fatalf("expected condition after cutoff to be ignored, got %d rows", len(rows))
 	}
-	rows = handleCondition(argsYoungerThan, before, counter, gvr, rows)
+	rows = handleCondition(argsYoungerThan, before, counter, gvr, rows, time.Now())
 	if len(rows) != 1 {
 		t.Fatalf("expected condition before cutoff to be reported, got %d rows", len(rows))
 	}
@@ -370,7 +370,7 @@ func TestHandleConditionTimeWindowDisabledByDefault(t *testing.T) {
 	}
 
 	var rows []conditionRow
-	rows = handleCondition(&Arguments{}, condition, counter, gvr, rows)
+	rows = handleCondition(&Arguments{}, condition, counter, gvr, rows, time.Now())
 	if len(rows) != 1 {
 		t.Fatalf("expected condition to be reported when no time filters are set, got %d rows", len(rows))
 	}
@@ -456,7 +456,7 @@ func TestHandleConditionSkipsHealthyTigeraConditions(t *testing.T) {
 			gvr := schema.GroupVersionResource{Resource: tc.resource}
 			counter := &handleResourceTypeOutput{}
 			var rows []conditionRow
-			rows = handleCondition(&Arguments{}, tc.condition, counter, gvr, rows)
+			rows = handleCondition(&Arguments{}, tc.condition, counter, gvr, rows, time.Now())
 			if len(rows) != tc.wantRows {
 				t.Fatalf("expected %d rows, got %d: %v", tc.wantRows, len(rows), rows)
 			}
@@ -490,7 +490,7 @@ func TestHandleConditionSkipsHealthyCustomNodeConditions(t *testing.T) {
 
 	var rows []conditionRow
 	for _, condition := range tests {
-		rows = handleCondition(&Arguments{}, condition, counter, gvr, rows)
+		rows = handleCondition(&Arguments{}, condition, counter, gvr, rows, time.Now())
 	}
 
 	if len(rows) != 0 {
