@@ -1,5 +1,15 @@
 # Check all Conditions
 
+> [!NOTE]
+> **check-conditions lives on in [konmon](https://github.com/guettli/konmon).** konmon has all checks of check-conditions (its polarity tables and ignore list, plus a few additions), more checks (image pull errors, Services without endpoints, dangling references, ...), checks you can write in TypeScript, and an optional monitoring mode with history and Alertmanager alerts. It runs the same way:
+>
+> ```console
+> go run github.com/guettli/konmon@latest check
+> go run github.com/guettli/konmon@latest check --while StillProvisioning
+> ```
+>
+> Every flag of check-conditions and its konmon equivalent: [coming from check-conditions](https://github.com/guettli/konmon/blob/main/docs/usage.md#coming-from-check-conditions).
+
 Tiny tool to check all conditions of all resources in your Kubernetes cluster.
 
 Takes only few milliseconds for small clusters running on localhost. Might take longer for large clusters.
