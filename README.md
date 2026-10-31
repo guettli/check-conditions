@@ -1,7 +1,7 @@
 # Check all Conditions
 
 > [!NOTE]
-> **check-conditions lives on in [konmon](https://github.com/guettli/konmon).** konmon has all checks of check-conditions (the same polarity tables and ignore list), more checks (crash loops, Services without endpoints, dangling references, ...), checks you can write in TypeScript, and an optional monitoring mode with history and Alertmanager alerts. It runs the same way:
+> **check-conditions lives on in [konmon](https://github.com/guettli/konmon).** konmon has all checks of check-conditions (its polarity tables and ignore list, plus a few additions), more checks (image pull errors, Services without endpoints, dangling references, ...), checks you can write in TypeScript, and an optional monitoring mode with history and Alertmanager alerts. It runs the same way:
 >
 > ```console
 > go run github.com/guettli/konmon@latest check
