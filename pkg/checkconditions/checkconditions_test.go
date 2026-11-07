@@ -439,6 +439,30 @@ func TestHandleConditionSkipsHealthyTigeraConditions(t *testing.T) {
 			wantRows: 0,
 		},
 		{
+			// agent-sandbox (sigs.k8s.io/agent-sandbox) sandboxes report this on
+			// every running sandbox.
+			name:     "sandboxes Suspended=False is healthy",
+			resource: "sandboxes",
+			condition: map[string]interface{}{
+				"type":    "Suspended",
+				"status":  "False",
+				"reason":  "NotSuspended",
+				"message": "Sandbox is not suspended",
+			},
+			wantRows: 0,
+		},
+		{
+			name:     "sandboxes Suspended=True is reported",
+			resource: "sandboxes",
+			condition: map[string]interface{}{
+				"type":    "Suspended",
+				"status":  "True",
+				"reason":  "Suspended",
+				"message": "",
+			},
+			wantRows: 1,
+		},
+		{
 			name:     "deployments Progressing=False ProgressDeadlineExceeded is still reported",
 			resource: "deployments",
 			condition: map[string]interface{}{
