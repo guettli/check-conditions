@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-		apierrors "k8s.io/apimachinery/pkg/api/errors"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -61,6 +61,11 @@ type Arguments struct {
 	// --ignore-condition-regex) checked in addition to the built-in
 	// conditionLinesToIgnoreRegexs.
 	ExtraConditionLinesToIgnoreRegexs []*regexp.Regexp
+	// IgnoreObjectRegexs (from --ignore-object-regex) skip whole objects:
+	// every finding of an object whose ObjectKey matches is dropped. Unlike
+	// the condition-line regexes this can name a specific object, e.g. one
+	// node that is expected to be offline.
+	IgnoreObjectRegexs []*regexp.Regexp
 	// IgnoreConditionYoungerThan ignores conditions whose lastTransitionTime is
 	// more recent than the threshold: for a duration, more recent than (now -
 	// duration); for an absolute timestamp, after that timestamp. Zero value
@@ -624,6 +629,9 @@ func printResources(args *Arguments, list *unstructured.UnstructuredList, gvr sc
 			}
 		}
 		if ns != "" && matchAnyPattern(ns, args.ExcludeNamespacePatterns) {
+			continue
+		}
+		if args.objectIgnored(ns, gvr.Resource, obj.GetName()) {
 			continue
 		}
 		counter.checkedResources++
@@ -1339,4 +1347,24 @@ func handleResourceType(ctx context.Context, input handleResourceTypeInput) hand
 	output.whileRegexDidMatch = again
 	output.lines = lines
 	return output
+}
+
+// ObjectKey is what --ignore-object-regex matches against:
+// "<namespace>/<resource>/<name>", with an empty namespace for
+// cluster-scoped objects, e.g. "/nodes/p16" or "agentloop/pods/foo-abc".
+func ObjectKey(namespace, resource, name string) string {
+	return namespace + "/" + resource + "/" + name
+}
+
+func (a *Arguments) objectIgnored(namespace, resource, name string) bool {
+	if len(a.IgnoreObjectRegexs) == 0 {
+		return false
+	}
+	key := ObjectKey(namespace, resource, name)
+	for _, r := range a.IgnoreObjectRegexs {
+		if r.MatchString(key) {
+			return true
+		}
+	}
+	return false
 }
