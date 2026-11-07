@@ -991,3 +991,28 @@ func TestKubeconfigSource(t *testing.T) {
 		}
 	})
 }
+
+func TestObjectIgnored(t *testing.T) {
+	a := &Arguments{IgnoreObjectRegexs: []*regexp.Regexp{
+		regexp.MustCompile(`^/(nodes|foreignclusters)/p16$`),
+		regexp.MustCompile(`^agentloop/pods/.*-p16-`),
+	}}
+	for _, tc := range []struct {
+		ns, res, name string
+		want          bool
+	}{
+		{"", "nodes", "p16", true},
+		{"", "nodes", "tc", false},
+		{"", "foreignclusters", "p16", true},
+		{"", "nodes", "p16x", false},
+		{"agentloop", "pods", "agentloop-cache-prune-p16-29898940-8pdnm", true},
+		{"other", "pods", "agentloop-cache-prune-p16-29898940-8pdnm", false},
+	} {
+		if got := a.objectIgnored(tc.ns, tc.res, tc.name); got != tc.want {
+			t.Errorf("objectIgnored(%q) = %v, want %v", ObjectKey(tc.ns, tc.res, tc.name), got, tc.want)
+		}
+	}
+	if (&Arguments{}).objectIgnored("", "nodes", "p16") {
+		t.Error("no regexes must ignore nothing")
+	}
+}

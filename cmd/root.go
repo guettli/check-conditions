@@ -40,6 +40,13 @@ Output is usualy:
 			}
 			arguments.ExtraConditionLinesToIgnoreRegexs = append(arguments.ExtraConditionLinesToIgnoreRegexs, r)
 		}
+		for _, s := range ignoreObjectRegexStrings {
+			r, err := regexp.Compile(s)
+			if err != nil {
+				return fmt.Errorf("invalid --ignore-object-regex %q: %w", s, err)
+			}
+			arguments.IgnoreObjectRegexs = append(arguments.IgnoreObjectRegexs, r)
+		}
 		younger, err := checkconditions.ParseConditionTimeThreshold(ignoreConditionYoungerThanString)
 		if err != nil {
 			return fmt.Errorf("invalid --ignore-condition-younger-than: %w", err)
@@ -65,6 +72,8 @@ func Execute() {
 var arguments = checkconditions.Arguments{}
 
 var ignoreConditionRegexStrings []string
+
+var ignoreObjectRegexStrings []string
 
 var ignoreConditionYoungerThanString string
 var ignoreConditionOlderThanString string
@@ -94,6 +103,8 @@ func init() {
 	rootCmd.PersistentFlags().Int64Var(&arguments.PodRestartWarnCount, "pod-restart-warn-count", 5, "Warn about a Pod container (regular, init or ephemeral) that has restarted at least this many times and is still unhealthy (waiting/CrashLoopBackOff or not ready). A container that starts again and again is not visible in status.conditions. Set to 0 to disable.")
 
 	rootCmd.PersistentFlags().StringArrayVar(&ignoreConditionRegexStrings, "ignore-condition-regex", nil, "Additional regex to ignore a condition line, on top of the built-in ignore list. Can be given multiple times. Matched against: 'resource type=status reason \"message\"', e.g. 'mypods MyCondition=False MyReason .*'")
+
+	rootCmd.PersistentFlags().StringArrayVar(&ignoreObjectRegexStrings, "ignore-object-regex", nil, "Regex to skip whole objects (all their findings). Can be given multiple times. Matched against '<namespace>/<resource>/<name>' (namespace empty for cluster-scoped), e.g. '^/nodes/p16$' or '^agentloop/pods/.*-p16-'")
 
 	rootCmd.PersistentFlags().StringVar(&ignoreConditionYoungerThanString, "ignore-condition-younger-than", "", "Ignore unhealthy conditions more recent than this. Accepts a duration relative to now (e.g. 5m to ignore conditions that changed within the last 5 minutes) or an RFC3339 timestamp (e.g. 2026-09-01T00:00:00Z to ignore conditions after that point in time). Empty disables it.")
 
